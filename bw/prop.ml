@@ -1,26 +1,26 @@
-module type S = 
+module type S =
 	sig
 		open Tm_rep
 		open Prop_rep
-		
+
 		val p_one : unit -> pprop
 		val p_zero : unit -> pprop
 		val p_or : pprop -> pprop -> pprop
 		val p_ex : pprop -> pprop
 		val p_shift : nprop -> pprop
-		
+
 		val n_top  : unit -> nprop
 		val n_prop : Top.tag -> (tm list) -> nprop
 		val n_and  : nprop -> nprop -> nprop
 		val n_imp  : pprop -> nprop -> nprop
 		val n_all  : nprop -> nprop
-		val n_shift : pprop -> nprop 
-	
+		val n_shift : pprop -> nprop
+
 		val open_pt_aux : int -> tm -> pprop -> pprop
 		val open_pt : tm -> pprop -> pprop
 		val open_nt_aux : int -> tm -> nprop -> nprop
 		val open_nt : tm -> nprop -> nprop
-		
+
 	  val close_pt_aux : int -> Top.tag -> pprop -> pprop
 		val close_pt : Top.tag -> pprop -> pprop
 		val close_nt_aux : int -> Top.tag -> nprop -> nprop
@@ -30,21 +30,21 @@ module type S =
 		val subst_tn : Top.tag -> tm -> nprop -> nprop
 		val msubst_tp : (Top.tag * tm) list -> pprop -> pprop
 		val msubst_tn : (Top.tag * tm) list -> nprop -> nprop
-		
+
 		val fv_pprop : pprop -> Top.TagSet.t
 		val fv_nprop : nprop -> Top.TagSet.t
 	end
-	
+
 module Make(G : Globals.T)(TMS:Tm.S) : S = struct
 	open Tm_rep
-	open Prop_rep 
-	
+	open Prop_rep
+
 	let p_one () =   Globals.PProp.hashcons G.pprop_table P_one
 	let p_zero () =  Globals.PProp.hashcons G.pprop_table P_zero
 	let p_or p1 p2 = Globals.PProp.hashcons G.pprop_table (P_or (p1, p2))
 	let p_ex p =     Globals.PProp.hashcons G.pprop_table (P_ex p)
 	let p_shift n =  Globals.PProp.hashcons G.pprop_table (P_shift n)
-	
+
 	let n_top () =    Globals.NProp.hashcons G.nprop_table N_top
 	let n_prop t l =  Globals.NProp.hashcons G.nprop_table (N_prop (t, l))
 	let n_and n1 n2 = Globals.NProp.hashcons G.nprop_table (N_and (n1, n2))
@@ -53,14 +53,14 @@ module Make(G : Globals.T)(TMS:Tm.S) : S = struct
 	let n_shift p =   Globals.NProp.hashcons G.nprop_table (N_shift p)
 
 	let rec open_pt_aux i u p =
-    let open_pt_iu = open_pt_aux i u in 
+    let open_pt_iu = open_pt_aux i u in
     match p.Hashcons.node with
     | P_one -> p
 		| P_zero -> p
 		| P_or (p1, p2) -> p_or (open_pt_iu p1) (open_pt_iu p2)
 		| P_ex p1 -> p_ex (open_pt_aux (i+1) u p1)
 		| P_shift n -> p_shift (open_nt_aux i u n)
-	and open_nt_aux i u n = 
+	and open_nt_aux i u n =
 	  let open_nt_iu = open_nt_aux i u in
 		match n.Hashcons.node with
     | N_top -> n
@@ -74,7 +74,7 @@ module Make(G : Globals.T)(TMS:Tm.S) : S = struct
 	let open_nt = open_nt_aux 0
 
   let rec close_pt_aux i x p =
-    let close_pt_ix = close_pt_aux i x in 
+    let close_pt_ix = close_pt_aux i x in
     match p.Hashcons.node with
 		| P_one -> p
 		| P_zero -> p
@@ -89,11 +89,11 @@ module Make(G : Globals.T)(TMS:Tm.S) : S = struct
 		| N_and (n1, n2) -> n_and (close_nt_ix n1) (close_nt_ix n2)
 		| N_imp (p1, n2) -> n_imp (close_pt_aux i x p1) (close_nt_ix n2)
 		| N_all n1 -> n_all (close_nt_aux (i+1) x n1)
-		| N_shift p -> n_shift (close_pt_aux i x p) 
-    
+		| N_shift p -> n_shift (close_pt_aux i x p)
+
   let close_pt = close_pt_aux 0
 	let close_nt = close_nt_aux 0
-	
+
 	let rec subst_tp x u p =
     let subst_tp_xu = subst_tp x u in
     match p.Hashcons.node with
@@ -110,7 +110,7 @@ module Make(G : Globals.T)(TMS:Tm.S) : S = struct
 		| N_and (n1, n2) -> n_and (subst_tn_xu n1) (subst_tn_xu n2)
 		| N_imp (p1, n2) -> n_imp (subst_tp x u p1) (subst_tn_xu n2)
 		| N_all n1 -> n_all (subst_tn_xu n1)
-		| N_shift p -> n_shift (subst_tp x u p) 
+		| N_shift p -> n_shift (subst_tp x u p)
 
   let rec msubst_tp m p =
     let msubst_tp_m = msubst_tp m in
@@ -128,7 +128,7 @@ module Make(G : Globals.T)(TMS:Tm.S) : S = struct
 		| N_and (n1, n2) -> n_and (msubst_tn_m n1) (msubst_tn_m n2)
 		| N_imp (p1, n2) -> n_imp (msubst_tp m p1) (msubst_tn_m n2)
 		| N_all n1 -> n_all (msubst_tn_m n1)
-		| N_shift p -> n_shift (msubst_tp m p) 
+		| N_shift p -> n_shift (msubst_tp m p)
 
 	let rec fv_pprop p : Top.TagSet.t =
 		match p.Hashcons.node with
@@ -144,6 +144,6 @@ module Make(G : Globals.T)(TMS:Tm.S) : S = struct
 			| N_and(n1, n2) -> Top.TagSet.union (fv_nprop n1) (fv_nprop n2)
 			| N_imp(p1, n2) -> Top.TagSet.union (fv_pprop p1) (fv_nprop n2)
 			| N_all n1 -> fv_nprop n1
-			| N_shift p1 -> fv_pprop p1						
-																					
+			| N_shift p1 -> fv_pprop p1
+
 end

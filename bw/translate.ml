@@ -11,7 +11,7 @@ module Make(G : Globals.T)(TMS:Tm.S)(PROPS:Prop.S) = struct
 
   let rec tm_to_tm m t =
 	  match t with
-		 | Var x -> tm_param (List.assoc x m)    
+		 | Var x -> tm_param (List.assoc x m)
 		 | Fun (s, tms) -> tm_fun (G.gen_sym s) (List.map (tm_to_tm m) tms)
 
 
@@ -51,7 +51,7 @@ module Make(G : Globals.T)(TMS:Tm.S)(PROPS:Prop.S) = struct
 			| Not p -> prop_not m p
 			| Eq _  -> failwith "Term EQ primitive '=' not supported"
 			| True -> n_top ()
-			| False -> n_shift (p_zero ()) 
+			| False -> n_shift (p_zero ())
 
 
 end

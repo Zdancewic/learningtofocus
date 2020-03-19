@@ -1,7 +1,7 @@
 (* Hash-consed representation of polarized first-order logic formulas *)
-type pprop = pprop_t Hashcons.hash_consed 
+type pprop = pprop_t Hashcons.hash_consed
 and pprop_t =
-  | P_one 
+  | P_one
   | P_zero
   | P_or    of pprop * pprop
   | P_ex    of pprop
@@ -12,7 +12,7 @@ and nprop_t =
   | N_prop of Top.tag * (Tm_rep.tm list)  (* the Top.tag is stored in a symbol table *)
   | N_top
   | N_and of nprop * nprop
-  | N_imp of pprop * nprop 
+  | N_imp of pprop * nprop
   | N_all of nprop
   | N_shift of pprop
 
@@ -57,8 +57,6 @@ module NPropRep = struct
     | N_and (n1, n2) -> abs (19 * (19 * n1.Hashcons.hkey + n2.Hashcons.hkey) + 2)
     | N_imp (p1, n2) -> abs (19 * (19 * p1.Hashcons.hkey + n2.Hashcons.hkey) + 3)
     | N_all n1 -> abs (19 * n1.Hashcons.hkey + 4)
-    | N_shift p -> abs (19 * p.Hashcons.hkey + 5)  
+    | N_shift p -> abs (19 * p.Hashcons.hkey + 5)
 
-end  
-
-
+end
