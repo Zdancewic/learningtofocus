@@ -36,13 +36,13 @@ let zero_bit k m = (k land m) == 0
 
 let rec mem k = function
   | Empty -> false
-  | Leaf (j,_) -> k.Top.tag == j.Top.tag
-  | Branch (_, m, l, r) -> mem k (if zero_bit k.Top.tag m then l else r)
+  | Leaf (j,_) -> k.tag == j.tag
+  | Branch (_, m, l, r) -> mem k (if zero_bit k.tag m then l else r)
 
 let rec find k = function
   | Empty -> raise Not_found
-  | Leaf (j,x) -> if k.Top.tag == j.Top.tag then x else raise Not_found
-  | Branch (_, m, l, r) -> find k (if zero_bit k.Top.tag m then l else r)
+  | Leaf (j,x) -> if k.tag == j.tag then x else raise Not_found
+  | Branch (_, m, l, r) -> find k (if zero_bit k.tag m then l else r)
 
 let lowest_bit x = x land (-x)
 
@@ -63,18 +63,18 @@ let add k x t =
   let rec ins = function
     | Empty -> Leaf (k,x)
     | Leaf (j,_) as t -> 
-	if j.Top.tag == k.Top.tag then 
+	if j.tag == k.tag then 
 	  Leaf (k,x) 
 	else 
-	  join (k.Top.tag, Leaf (k,x), j.Top.tag, t)
+	  join (k.tag, Leaf (k,x), j.tag, t)
     | Branch (p,m,t0,t1) as t ->
-	if match_prefix k.Top.tag p m then
-	  if zero_bit k.Top.tag m then 
+	if match_prefix k.tag p m then
+	  if zero_bit k.tag m then 
 	    Branch (p, m, ins t0, t1)
 	  else
 	    Branch (p, m, t0, ins t1)
 	else
-	  join (k.Top.tag, Leaf (k,x), p, t)
+	  join (k.tag, Leaf (k,x), p, t)
   in
   ins t
 
@@ -86,10 +86,10 @@ let branch = function
 let remove k t =
   let rec rmv = function
     | Empty -> Empty
-    | Leaf (j,_) as t -> if k.Top.tag == j.Top.tag then Empty else t
+    | Leaf (j,_) as t -> if k.tag == j.tag then Empty else t
     | Branch (p,m,t0,t1) as t -> 
-	if match_prefix k.Top.tag p m then
-	  if zero_bit k.Top.tag m then
+	if match_prefix k.tag p m then
+	  if zero_bit k.tag m then
 	    branch (p, m, rmv t0, t1)
 	  else
 	    branch (p, m, t0, rmv t1)

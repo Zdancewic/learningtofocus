@@ -30,7 +30,7 @@ let start_of_range (_,s,_) = s
 let end_of_range (_,_,e) = e
 let mk_range i s e = (i,s,e)
 let valid_pos (l,_) = l <> 0
-let merge_range ((f,s1,e1) as r1) ((f',s2,e2) as r2)=
+let merge_range ((f,s1,e1) as r1) ((_,s2,e2) as r2)=
   if (not (valid_pos s1)) then r2 else
   if (not (valid_pos s2)) then r1 else
   mk_range f (min s1 s2) (max e1 e2)

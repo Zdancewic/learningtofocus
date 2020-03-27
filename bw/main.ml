@@ -1,4 +1,6 @@
 (* open Arg *)
+open Util
+open Common
 open List
 open Range
 
@@ -64,7 +66,7 @@ let process_input i =
 	  let _ = Printf.printf"PProp Table:\n" in
 	  let _ = Globals.PProp.iter (fun x -> Printf.printf " S:%d = %s\n" x.Hashcons.tag (Pp.string_of_pprop G.lookup_sym x)) G.pprop_table in				
 
-	  let (params, goals) = PROVER.make_synthetics (!ctxt) q in		
+	  let (_, goals) = PROVER.make_synthetics (!ctxt) q in		
 
 	  let _ = Hashtbl.iter (fun i r -> Printf.printf "RULE(S:%d)\n%s\n" i (Pp.string_of_x (RULES.pp_rule G.lookup_sym) r)) PROVER.rules in								
 	  let _ = Printf.printf "Goals:\n" in
@@ -76,7 +78,7 @@ let process_input i =
 	  let _ = if !Pp.verbose then Printf.printf "adding axiom: " in
 	  let q = TRANS.prop_to_pprop [] p in  (* positive proposition *)
 	  let _ = if !Pp.verbose then Printf.printf "%s\n" (Pp.string_of_pprop G.lookup_sym q) else () in 
-	  let l = G.gen_tag () in
+   (*	  let l = G.gen_tag () in *)
 	  let g = !ctxt in
 	  ctxt := q::g
 

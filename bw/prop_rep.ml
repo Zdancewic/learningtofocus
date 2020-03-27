@@ -1,3 +1,5 @@
+open Util
+
 (* Hash-consed representation of polarized first-order logic formulas *)
 type pprop = pprop_t Hashcons.hash_consed 
 and pprop_t =

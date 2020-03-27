@@ -1,7 +1,9 @@
 open Fol
+(*    
 open Pp
 open Prover
-
+open Ctxt
+*)
 
 (* Misc tests *)
 let p1 = Prop_and (Prop_all ("z", Prop_pred (("x", 2), [ Tm_bv 0; Tm_fv "y" ])),
@@ -23,5 +25,5 @@ let pC = Prop_pred (("C", 0), [])
 let pAimpB = Prop_imp (pA, pB)
 let pAandC = Prop_and (pA, pC)
 let pBandC = Prop_and (pB, pC)
-let g : ctxt = [((gensym_lab_hint "axAimpB"), pAimpB); ((gensym_lab_hint "axAndC"), pAandC)]
+let g  = [((gensym_lab_hint "axAimpB"), pAimpB); ((gensym_lab_hint "axAndC"), pAandC)]
 

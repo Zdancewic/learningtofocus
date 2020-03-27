@@ -1,3 +1,5 @@
+open Util
+    
 module type S =
 sig
   open Tm_rep
@@ -56,7 +58,7 @@ module Make(G:Globals.T) : S = struct
     match t.Hashcons.node with
     | Tm_uvar _ -> Top.TagSet.empty
     | Tm_param y -> Top.TagSet.singleton y
-    | Tm_fun (f, ts) -> List.fold_left (fun a t -> Top.TagSet.union a (fv_t t)) Top.TagSet.empty ts
+    | Tm_fun (_, ts) -> List.fold_left (fun a t -> Top.TagSet.union a (fv_t t)) Top.TagSet.empty ts
 end 
 
 

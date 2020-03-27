@@ -10,59 +10,59 @@ where C is either 'any' or q[t1...tm]
 open Format
 
 module type S = sig
-	(* Atomic propositions can either be: *)
-	(*   - a primitive proposition instantiated at some terms, or *)
-	(*   - the Top.tag identifying a synthetic formula instantiated at some terms *)
-	(* Both have the same structure, making unification easier. *)
-	type atomic_prop = Top.tag * Tm_rep.tm list  
-	type assumptions = atomic_prop list
-	type goal = 
-		| Atomic of atomic_prop
-		| Any       (* arises from the left rule for false *)
-	
-	type sequent = assumptions * goal
-	
-	type t = {
-		    params : Top.TagSet.t  (* binder for the free variables of this rule *)
-		  ; uvars : Top.TagSet.t   (* unification variables created by this rule *)
-			; premises : sequent list   (* maybe a set? *)
-			; conclusion : goal
-		}
-	
-   val instantiate : t -> (Tm_rep.tm list) -> t
-	 val pp_sequent : (int -> string) -> Format.formatter -> sequent -> unit
-	 val pp_rule : (int -> string) -> Format.formatter -> t -> unit
+  (* Atomic propositions can either be: *)
+  (*   - a primitive proposition instantiated at some terms, or *)
+  (*   - the Top.tag identifying a synthetic formula instantiated at some terms *)
+  (* Both have the same structure, making unification easier. *)
+  type atomic_prop = Top.tag * Tm_rep.tm list  
+  type assumptions = atomic_prop list
+  type goal = 
+    | Atomic of atomic_prop
+    | Any       (* arises from the left rule for false *)
+
+  type sequent = assumptions * goal
+
+  type t = {
+    params : Top.TagSet.t  (* binder for the free variables of this rule *)
+  ; uvars : Top.TagSet.t   (* unification variables created by this rule *)
+  ; premises : sequent list   (* maybe a set? *)
+  ; conclusion : goal
+  }
+
+  val instantiate : t -> (Tm_rep.tm list) -> t
+  val pp_sequent : (int -> string) -> Format.formatter -> sequent -> unit
+  val pp_rule : (int -> string) -> Format.formatter -> t -> unit
 end
 
 module Make(G:Globals.T)(TMS:Tm.S) : S  = struct
 
-	(* Atomic propositions can either be: *)
-	(*   - a primitive proposition instantiated at some terms, or *)
-	(*   - the Top.tag identifying a synthetic formula instantiated at some terms *)
-	(* Both have the same structure, making unification easier. *)
-	type atomic_prop = Top.tag * Tm_rep.tm list  
-	type assumptions = atomic_prop list
-	type goal = 
-		| Atomic of atomic_prop
-		| Any       (* arises from the left rule for false *)
-	
-	type sequent = assumptions * goal
-	
-	type t = {
-		    params : Top.TagSet.t  (* binder for the free variables of this rule *)
-		  ; uvars : Top.TagSet.t   (* unification variables created by this rule *)
-			; premises : sequent list   (* maybe a set? *)
-			; conclusion : goal
-		}
-	
+  (* Atomic propositions can either be: *)
+  (*   - a primitive proposition instantiated at some terms, or *)
+  (*   - the Top.tag identifying a synthetic formula instantiated at some terms *)
+  (* Both have the same structure, making unification easier. *)
+  type atomic_prop = Top.tag * Tm_rep.tm list  
+  type assumptions = atomic_prop list
+  type goal = 
+    | Atomic of atomic_prop
+    | Any       (* arises from the left rule for false *)
+
+  type sequent = assumptions * goal
+
+  type t = {
+    params : Top.TagSet.t  (* binder for the free variables of this rule *)
+  ; uvars : Top.TagSet.t   (* unification variables created by this rule *)
+  ; premises : sequent list   (* maybe a set? *)
+  ; conclusion : goal
+  }
 
 
-let msubst_tap m (id, ts) = (id, List.map (TMS.msubst_tt m) ts)
-let msubst_tassm m aps = List.map (msubst_tap m) aps
-let msubst_tg m g =
-	match g with
-		| Atomic ap -> Atomic (msubst_tap m ap)
-		| Any -> Any
+
+  let msubst_tap m (id, ts) = (id, List.map (TMS.msubst_tt m) ts)
+  let msubst_tassm m aps = List.map (msubst_tap m) aps
+  let msubst_tg m g =
+    match g with
+    | Atomic ap -> Atomic (msubst_tap m ap)
+    | Any -> Any
 
 (* Modify this to take the unification context into account *)
 (* Note that the order of the parameters to a synthatic connective is determined by the *)
