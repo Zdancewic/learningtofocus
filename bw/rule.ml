@@ -32,6 +32,8 @@ module type S = sig
    val instantiate : t -> (Tm_rep.tm list) -> t
 	 val pp_sequent : (int -> string) -> Format.formatter -> sequent -> unit
 	 val pp_rule : (int -> string) -> Format.formatter -> t -> unit
+  val pp_goal : (int -> string) -> Format.formatter -> goal -> unit
+  val pp_atomic_prop : (int -> string) -> Format.formatter -> atomic_prop -> unit
 end
 
 module Make(G:Globals.T)(TMS:Tm.S) : S  = struct
