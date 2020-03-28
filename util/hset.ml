@@ -70,8 +70,8 @@ let zero_bit k m = (k land m) == 0
 
 let rec mem k = function
   | Empty -> false
-  | Leaf j -> k.Top.tag == j.Top.tag
-  | Branch (_, m, l, r) -> mem k (if zero_bit k.Top.tag m then l else r)
+  | Leaf j -> k.tag == j.tag
+  | Branch (_, m, l, r) -> mem k (if zero_bit k.tag m then l else r)
 
 (*s The following operation [join] will be used in both insertion and
     union. Given two non-empty trees [t0] and [t1] with longest common
@@ -110,15 +110,15 @@ let add k t =
   let rec ins = function
     | Empty -> Leaf k
     | Leaf j as t -> 
-	if j.Top.tag == k.Top.tag then t else join (k.Top.tag, Leaf k, j.Top.tag, t)
+	if j.tag == k.tag then t else join (k.tag, Leaf k, j.tag, t)
     | Branch (p,m,t0,t1) as t ->
-	if match_prefix k.Top.tag p m then
-	  if zero_bit k.Top.tag m then 
+	if match_prefix k.tag p m then
+	  if zero_bit k.tag m then 
 	    Branch (p, m, ins t0, t1)
 	  else
 	    Branch (p, m, t0, ins t1)
 	else
-	  join (k.Top.tag, Leaf k, p, t)
+	  join (k.tag, Leaf k, p, t)
   in
   ins t
 
@@ -135,10 +135,10 @@ let branch = function
 let remove k t =
   let rec rmv = function
     | Empty -> Empty
-    | Leaf j as t -> if k.Top.tag == j.Top.tag then Empty else t
+    | Leaf j as t -> if k.tag == j.tag then Empty else t
     | Branch (p,m,t0,t1) as t -> 
-	if match_prefix k.Top.tag p m then
-	  if zero_bit k.Top.tag m then
+	if match_prefix k.tag p m then
+	  if zero_bit k.tag m then
 	    branch (p, m, rmv t0, t1)
 	  else
 	    branch (p, m, t0, rmv t1)
@@ -323,7 +323,7 @@ let equal = (=)
 let compare = compare
 
 (*i*)
-let make l = List.fold_right add l empty
+(* let make l = List.fold_right add l empty *)
 (*i*)
 
 (*s Additional functions w.r.t to [Set.S]. *)

@@ -1,4 +1,6 @@
 (* open Arg *)
+open Util
+open Common
 open List
 open Range
 
@@ -69,22 +71,22 @@ let process_input i =
 	  let _ = Hashtbl.iter (fun i r -> Printf.printf "RULE(S:%d)\n%s\n" i (Pp.string_of_x (RULES.pp_rule G.lookup_sym) r)) PROVER.rules in
 	  let _ = Printf.printf "Goals:\n" in
 	  let _ = Printf.printf "%s\n" (Pp.string_of_x (fun fmt -> Pp.pp_list_aux fmt "\n" (RULES.pp_sequent G.lookup_sym fmt)) goals) in
-   let success = PROVER.search_goals params goals in
-   if success then
-     Printf.printf "PROOF SEARCH SUCCEEDED\n"
-   else
-     Printf.printf "PROOF SEARCH FAILED\n")
+          let success = PROVER.search_goals params goals in
+          if success then
+            Printf.printf "PROOF SEARCH SUCCEEDED\n"
+          else
+            Printf.printf "PROOF SEARCH FAILED\n")
       | Ast.Axiom -> (
 	  let _ = if !Pp.verbose then Printf.printf "adding axiom: " in
 	  let q = TRANS.prop_to_pprop [] p in  (* positive proposition *)
 	  let _ = if !Pp.verbose then Printf.printf "%s\n" (Pp.string_of_pprop G.lookup_sym q) else () in
-	  let l = G.gen_tag () in
+   (*	  let l = G.gen_tag () in *)
 	  let g = !ctxt in
 	  ctxt := q::g
 
 	)
       | _ ->  Printf.printf "Role not supported\n";
-    Printf.printf "Proposition %s : %s\n" s (Pp.string_of_nprop G.lookup_sym (TRANS.prop_to_nprop [] p))
+        Printf.printf "Proposition %s : %s\n" s (Pp.string_of_nprop G.lookup_sym (TRANS.prop_to_nprop [] p))
     end
 
 let process_file =

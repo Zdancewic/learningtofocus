@@ -1,4 +1,5 @@
 {
+  open Util
   open Lexing
   open Parser
   open Range
@@ -38,7 +39,7 @@
      the lexer. For this, we'll need a buffer to hold the translated part of
      the string. *)
   let begin_string lexbuf = ((lex_range lexbuf), Buffer.create 8)
-  let finish_string info buf lexbuf =
+  let finish_string _ buf lexbuf =
     LITERAL ((lex_range lexbuf), Buffer.contents buf)
   let add_byte buf cha = Buffer.add_char buf cha
   let get_escaped cha =
@@ -56,28 +57,28 @@
      use tables for keywords. *)
   
   let kwdtab = [
-		"include", (fun i -> KW_INCLUDE i);
-    "fof", (fun i -> KW_FOF i);
-		"axiom", (fun i -> KW_AXIOM i);
-		"hypothesis", (fun i -> KW_HYPOTHESIS i);
-		"definition", (fun i -> KW_DEFINITION i);
-		"assumption", (fun i -> KW_ASSUMPTION i);
-		"lemma", (fun i -> KW_LEMMA i);
-		"theorem", (fun i -> KW_THEOREM i);
-		"conjecture", (fun i -> KW_CONJECTURE i);
-		"negated_conjecture", (fun i -> KW_NEG_CONJECTURE i);
-		"plain", (fun i -> KW_PLAIN i);
-		"fi_domain", (fun i -> KW_FI_DOMAIN i);
-		"fi_functor", (fun i -> KW_FI_FUNCTORS i);
-		"fi_predicates", (fun i -> KW_FI_PREDICATES i);
-		"type", (fun i -> KW_TYPE i);
-		"unknown", (fun i -> KW_UNKNOWN i); 
+  "include", (fun i -> KW_INCLUDE i);
+  "fof", (fun i -> KW_FOF i);
+  "axiom", (fun i -> KW_AXIOM i);
+  "hypothesis", (fun i -> KW_HYPOTHESIS i);
+  "definition", (fun i -> KW_DEFINITION i);
+  "assumption", (fun i -> KW_ASSUMPTION i);
+  "lemma", (fun i -> KW_LEMMA i);
+  "theorem", (fun i -> KW_THEOREM i);
+  "conjecture", (fun i -> KW_CONJECTURE i);
+  "negated_conjecture", (fun i -> KW_NEG_CONJECTURE i);
+  "plain", (fun i -> KW_PLAIN i);
+  "fi_domain", (fun i -> KW_FI_DOMAIN i);
+  "fi_functor", (fun i -> KW_FI_FUNCTORS i);
+  "fi_predicates", (fun i -> KW_FI_PREDICATES i);
+  "type", (fun i -> KW_TYPE i);
+  "unknown", (fun i -> KW_UNKNOWN i); 
   ]
 
   let kwd_table =
-		let tab = Hashtbl.create 128 in
-		List.iter (fun (k,t) -> Hashtbl.add tab k t) kwdtab;
-		tab
+  let tab = Hashtbl.create 128 in
+    List.iter (fun (k,t) -> Hashtbl.add tab k t) kwdtab;
+    tab
   
   let kwd_or_id lexbuf s =
     let r = lex_range lexbuf in
@@ -94,7 +95,7 @@ let digit = ['0'-'9']
 
 rule token = parse
   | lowercase (digit | character | '_')* { kwd_or_id lexbuf (lexeme lexbuf) }
-	| uppercase (digit | character | '_')* { UIDENT (lex_range lexbuf, lexeme lexbuf) }
+  | uppercase (digit | character | '_')* { UIDENT (lex_range lexbuf, lexeme lexbuf) }
   | digit+ { INT (lex_range lexbuf, (Int32.of_string (lexeme lexbuf))) }
   | whitespace+ { token lexbuf }
   | newline { newline lexbuf; token lexbuf }
@@ -109,34 +110,37 @@ rule token = parse
   | '%' { comment_line lexbuf }
   | '[' { TOK_LBRACKET (lex_range lexbuf) }
   | ']' { TOK_RBRACKET (lex_range lexbuf) }
-	| '!' { TOK_BANG (lex_range lexbuf) }
-	| '&' { TOK_AMPERSAND (lex_range lexbuf) }
-	| '|' { TOK_BAR (lex_range lexbuf) }
-	| '~' { TOK_TILDE (lex_range lexbuf) }
-	| "!=" { TOK_BANGEQ (lex_range lexbuf) }
-	| "<=" { TOK_LTEQ (lex_range lexbuf) }
-	| "=>" { TOK_EQGT (lex_range lexbuf) }
-	| "<=>" { TOK_LTEQGT (lex_range lexbuf) }
-	| "<~>" { TOK_LTTILDEGT (lex_range lexbuf) }
-	| "~|" { TOK_TILDEBAR (lex_range lexbuf) }
-	| "~&" { TOK_TILDEAMPERSAND (lex_range lexbuf) }
-	| "*" { TOK_STAR (lex_range lexbuf) }
-	| "+" { TOK_PLUS (lex_range lexbuf) }
-	| "$true"  {TOK_TRUE (lex_range lexbuf) }
-	| "$false" {TOK_FALSE (lex_range lexbuf) }
-	| "/*" {comment 1 lexbuf }
+  | '!' { TOK_BANG (lex_range lexbuf) }
+  | '&' { TOK_AMPERSAND (lex_range lexbuf) }
+  | '|' { TOK_BAR (lex_range lexbuf) }
+  | '~' { TOK_TILDE (lex_range lexbuf) }
+  | "!=" { TOK_BANGEQ (lex_range lexbuf) }
+  | "<=" { TOK_LTEQ (lex_range lexbuf) }
+  | "=>" { TOK_EQGT (lex_range lexbuf) }
+  | "<=>" { TOK_LTEQGT (lex_range lexbuf) }
+  | "<~>" { TOK_LTTILDEGT (lex_range lexbuf) }
+  | "~|" { TOK_TILDEBAR (lex_range lexbuf) }
+  | "~&" { TOK_TILDEAMPERSAND (lex_range lexbuf) }
+(*  | "*" { TOK_STAR (lex_range lexbuf) } *)
+(*  | "+" { TOK_PLUS (lex_range lexbuf) } *)
+  | "$true"  {TOK_TRUE (lex_range lexbuf) }
+  | "$false" {TOK_FALSE (lex_range lexbuf) }
+  | "/*" {comment 1 lexbuf }
   | _ as c { unexpected_char lexbuf c }
+
 and comment_line = parse
   | whitespace+ "Status (intuit.) : " (whitespace | character | '-')* { print_endline (lexeme lexbuf); comment_line lexbuf }   
   | newline { newline lexbuf; token lexbuf }
 	| eof { unexpected_eof lexbuf }
 	| _ { comment_line lexbuf }
+
 and comment nest = parse
   | "/*" { comment (nest + 1) lexbuf }
   | "*/" { if nest = 1 then token lexbuf else comment (nest - 1) lexbuf }
   | newline { newline lexbuf; comment nest lexbuf }
   | eof { unexpected_eof lexbuf }
   | _ { comment nest lexbuf }
+
 and string info buf = parse
   | '\\' ("\"" | '\\' | 'n' | 't' | 'b' | 'r') {
       add_escaped buf (lexeme_char lexbuf 1);

@@ -35,7 +35,7 @@ let create sz =
   let sz = if sz < 7 then 7 else sz in
   let sz = if sz > Sys.max_array_length then Sys.max_array_length else sz in
   let emptybucket = Weak.create 0 in
-  { table = Array.create sz emptybucket;
+  { table = Array.make sz emptybucket;
     totsize = 0;
     limit = 3; }
 
@@ -135,6 +135,24 @@ let stats t =
   let totlen = Array.fold_left ( + ) 0 lens in
   (len, count t, totlen, lens.(0), lens.(len/2), lens.(len-1))
 
+let mem t d =
+  let hkey = Hashtbl.hash d in
+  let index = hkey mod (Array.length t.table) in
+  let bucket = t.table.(index) in
+  let sz = Weak.length bucket in
+  let rec loop i =
+    if i >= sz then false
+    else begin
+      match Weak.get_copy bucket i with
+        | Some v when v.node = d -> 
+	    begin match Weak.get bucket i with
+              | Some _ -> true
+              | None -> loop (i+1)
+            end
+        | _ -> loop (i+1)
+    end
+  in
+  loop 0
 
 (* Functorial interface *)
 
@@ -154,6 +172,8 @@ module type S =
     val hashcons : t -> key -> key hash_consed
     val iter : (key hash_consed -> unit) -> t -> unit
     val stats : t -> int * int * int * int * int * int
+    val mem : t -> key -> bool
+    val count : t -> int
   end
 
 module Make(H : HashedType) : (S with type key = H.t) = struct
@@ -174,7 +194,7 @@ module Make(H : HashedType) : (S with type key = H.t) = struct
     let sz = if sz < 7 then 7 else sz in
     let sz = if sz > Sys.max_array_length then Sys.max_array_length else sz in
     {
-      table = Array.create sz emptybucket;
+      table = Array.make sz emptybucket;
       totsize = 0;
       limit = 3;
     }
@@ -276,4 +296,22 @@ module Make(H : HashedType) : (S with type key = H.t) = struct
     let totlen = Array.fold_left ( + ) 0 lens in
     (len, count t, totlen, lens.(0), lens.(len/2), lens.(len-1))
   
+  let mem t d =
+    let hkey = H.hash d in
+    let index = hkey mod (Array.length t.table) in
+    let bucket = t.table.(index) in
+    let sz = Weak.length bucket in
+    let rec loop i =
+      if i >= sz then false
+      else begin
+	match Weak.get_copy bucket i with
+        | Some v when v.node = d -> 
+	    begin match Weak.get bucket i with
+            | Some _ -> true
+            | None -> loop (i+1)
+            end
+        | _ -> loop (i+1)
+      end
+    in
+    loop 0
 end

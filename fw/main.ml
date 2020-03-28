@@ -46,44 +46,44 @@ let ast_from_lexbuf filename buf =
 let ctxt = ref (Frule.AssumpSet.empty)
 
 let process_input i =
-	let _ = Format.print_flush () in
-	match i with 
-		| Ast.Include _ -> Fpp.pp_input i
-		| Ast.Fof(s, r, p) -> begin
-				match r with 
-					| Ast.Conjecture -> (
-						    let q = TRANS.prop_to_prop [] p (Fprop_rep.Pos)in 
-						  	let _ = Printf.printf " Proving %s" s in
-								let _ = if !Fpp.verbose then Printf.printf ": %s\n" (Fpp.string_of_sprop G.lookup_sym q) else 
-									      Printf.printf "\n" in
-								
-								let _ = Printf.printf "Symbols:\n" in
-								let _ = Hashtbl.iter (fun h -> fun (s,t) -> Printf.printf " S:%d = %s[%d]\n" h s t) G.sym_table in										
-								let _ = Printf.printf"FProp Table:\n" in
-								let _ = Fglobals.FProp.iter (fun x -> Printf.printf " S:%d = %s\n" x.Hashcons.tag (Fpp.string_of_sprop G.lookup_sym x)) G.fprop_table in				                                
-								let _ = PROVER.fw_search (!ctxt) q in
-								(*let (params, goals) = PROVER.make_synthetics (!ctxt) q in*)		
-								
-								(* let _ = RULE_SET.iter (fun (i, r) -> Printf.printf "RULE(S:%d)\n%s\n" i (Fpp.string_of_x (RULES.pp_rule G.lookup_sym) r)) rule_val in*)
-								(*let _ = Hashtbl.iter (fun i r -> Printf.printf "RULE(S:%d)\n%s\n" i (Fpp.string_of_x (RULES.pp_rule G.lookup_sym) r)) PROVER.rules in*)
-								(*let _ = Printf.printf "Goals:\n" in
-								let _ = Printf.printf "%s\n" (Fpp.string_of_x (fun fmt -> Fpp.pp_list_aux fmt "\n" (RULES.pp_sequent G.lookup_sym fmt)) goals) in *)							
-								()
-								
-						)
-					| Ast.Axiom -> (
-						  let _ = if !Fpp.verbose then Printf.printf "adding axiom: " in
-						  let q = TRANS.prop_to_prop [] p (Fprop_rep.Neg) in  (* negative proposition *)
-							let _ = if !Fpp.verbose then Printf.printf "%s\n" (Fpp.string_of_sprop G.lookup_sym q) else () in 
-						  let _ = G.gen_tag () in
-							let g = !ctxt in
-							  ctxt := Frule.AssumpSet.add q g
-						
-						)
-					| _ ->  Printf.printf "Role not supported\n";
-						      Printf.printf "Proposition %s : %s\n" s (Fpp.string_of_sprop G.lookup_sym (TRANS.prop_to_prop [] p (Fprop_rep.Pos)))
-			end
-			
+  let _ = Format.print_flush () in
+  match i with 
+  | Ast.Include _ -> Fpp.pp_input i
+  | Ast.Fof(s, r, p) -> begin
+      match r with 
+      | Ast.Conjecture -> (
+	  let q = TRANS.prop_to_prop [] p (Fprop_rep.Pos)in 
+	  let _ = Printf.printf " Proving %s" s in
+	  let _ = if !Fpp.verbose then Printf.printf ": %s\n" (Fpp.string_of_sprop G.lookup_sym q) else 
+	      Printf.printf "\n" in
+
+	  let _ = Printf.printf "Symbols:\n" in
+	  let _ = Hashtbl.iter (fun h -> fun (s,t) -> Printf.printf " S:%d = %s[%d]\n" h s t) G.sym_table in										
+	  let _ = Printf.printf"FProp Table:\n" in
+	  let _ = Fglobals.FProp.iter (fun x -> Printf.printf " S:%d = %s\n" x.Hashcons.tag (Fpp.string_of_sprop G.lookup_sym x)) G.fprop_table in				                                
+	  let _ = PROVER.fw_search (!ctxt) q in
+	  (*let (params, goals) = PROVER.make_synthetics (!ctxt) q in*)		
+
+	  (* let _ = RULE_SET.iter (fun (i, r) -> Printf.printf "RULE(S:%d)\n%s\n" i (Fpp.string_of_x (RULES.pp_rule G.lookup_sym) r)) rule_val in*)
+	  (*let _ = Hashtbl.iter (fun i r -> Printf.printf "RULE(S:%d)\n%s\n" i (Fpp.string_of_x (RULES.pp_rule G.lookup_sym) r)) PROVER.rules in*)
+	  (*let _ = Printf.printf "Goals:\n" in
+	    let _ = Printf.printf "%s\n" (Fpp.string_of_x (fun fmt -> Fpp.pp_list_aux fmt "\n" (RULES.pp_sequent G.lookup_sym fmt)) goals) in *)							
+	  ()
+
+	)
+      | Ast.Axiom -> (
+	  let _ = if !Fpp.verbose then Printf.printf "adding axiom: " in
+	  let q = TRANS.prop_to_prop [] p (Fprop_rep.Neg) in  (* negative proposition *)
+	  let _ = if !Fpp.verbose then Printf.printf "%s\n" (Fpp.string_of_sprop G.lookup_sym q) else () in 
+	  let _ = G.gen_tag () in
+	  let g = !ctxt in
+	  ctxt := Frule.AssumpSet.add q g
+
+	)
+      | _ ->  Printf.printf "Role not supported\n";
+	Printf.printf "Proposition %s : %s\n" s (Fpp.string_of_sprop G.lookup_sym (TRANS.prop_to_prop [] p (Fprop_rep.Pos)))
+    end
+
 let process_file = 
 	(* let _ = ctxt := [] in *)
 	List.iter process_input

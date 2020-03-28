@@ -10,64 +10,65 @@ where C is either 'any' or q[t1...tm]
 open Format
 
 module type S = sig
-	(* Atomic propositions can either be: *)
-	(*   - a primitive proposition instantiated at some terms, or *)
-	(*   - the Top.tag identifying a synthetic formula instantiated at some terms *)
-	(* Both have the same structure, making unification easier. *)
-	type atomic_prop = Top.tag * Tm_rep.tm list
-	type assumptions = atomic_prop list
-	type goal =
-		| Atomic of atomic_prop
-		| Any       (* arises from the left rule for false *)
+  (* Atomic propositions can either be: *)
+  (*   - a primitive proposition instantiated at some terms, or *)
+  (*   - the Top.tag identifying a synthetic formula instantiated at some terms *)
+  (* Both have the same structure, making unification easier. *)
+  type atomic_prop = Top.tag * Tm_rep.tm list
+  type assumptions = atomic_prop list
+  type goal =
+    | Atomic of atomic_prop
+    | Any       (* arises from the left rule for false *)
 
-	type sequent = assumptions * goal
+  type sequent = assumptions * goal
 
-	type t = {
-		    params : Top.TagSet.t  (* binder for the free variables of this rule *)
-		  ; uvars : Top.TagSet.t   (* unification variables created by this rule *)
-			; premises : sequent list   (* maybe a set? *)
-			; conclusion : goal
-	}
+  type t = {
+    params : Top.TagSet.t  (* binder for the free variables of this rule *)
+  ; uvars : Top.TagSet.t   (* unification variables created by this rule *)
+  ; premises : sequent list   (* maybe a set? *)
+  ; conclusion : goal
+  }
 
   val instantiate : t -> (Tm_rep.tm list) -> t
   val pp_sequent : (int -> string) -> Format.formatter -> sequent -> unit
-	val pp_rule : (int -> string) -> Format.formatter -> t -> unit
+  val pp_rule : (int -> string) -> Format.formatter -> t -> unit
   val pp_goal : (int -> string) -> Format.formatter -> goal -> unit
   val pp_atomic_prop : (int -> string) -> Format.formatter -> atomic_prop -> unit
 end
 
 module Make(G:Globals.T)(TMS:Tm.S) : S  = struct
 
-	(* Atomic propositions can either be: *)
-	(*   - a primitive proposition instantiated at some terms, or *)
-	(*   - the Top.tag identifying a synthetic formula instantiated at some terms *)
-	(* Both have the same structure, making unification easier. *)
-	type atomic_prop = Top.tag * Tm_rep.tm list
-	type assumptions = atomic_prop list
-	type goal =
-		| Atomic of atomic_prop
-		| Any       (* arises from the left rule for false *)
 
-	type sequent = assumptions * goal
+(* Atomic propositions can either be: *)
+(*   - a primitive proposition instantiated at some terms, or *)
+(*   - the Top.tag identifying a synthetic formula instantiated at some terms *)
+(* Both have the same structure, making unification easier. *)
+  type atomic_prop = Top.tag * Tm_rep.tm list
+  type assumptions = atomic_prop list
+  type goal =
+    | Atomic of atomic_prop
+    | Any       (* arises from the left rule for false *)
+
+  type sequent = assumptions * goal
 
   type substitution = (Top.tag * Tm_rep.tm) list
 
-	type t = {
-		    params : Top.TagSet.t  (* binder for the free variables of this rule *)
-		  ; uvars : Top.TagSet.t   (* unification variables created by this rule *)
-			; premises : sequent list   (* maybe a set? *)
-			; conclusion : goal
-		}
+  type t = {
+    params : Top.TagSet.t  (* binder for the free variables of this rule *)
+  ; uvars : Top.TagSet.t   (* unification variables created by this rule *)
+  ; premises : sequent list   (* maybe a set? *)
+  ; conclusion : goal
+  }
 
 
 
-let msubst_tap   (m : substitution) (id, ts) : atomic_prop =
-  (id, List.map (TMS.msubst_tt m) ts)
-let msubst_tassm (m : substitution) : assumptions -> assumptions =
-  List.map (msubst_tap m)
-let msubst_tg    (m : substitution) : goal -> goal = function
-		| Atomic ap -> Atomic (msubst_tap m ap)
-		| Any -> Any
+  let msubst_tap   (m : substitution) (id, ts) : atomic_prop =
+    (id, List.map (TMS.msubst_tt m) ts)
+  let msubst_tassm (m : substitution) : assumptions -> assumptions =
+    List.map (msubst_tap m)
+  let msubst_tg    (m : substitution) : goal -> goal = function
+    | Atomic ap -> Atomic (msubst_tap m ap)
+    | Any -> Any
 
 (* Modify this to take the unification context into account *)
 (* Note that the order of the parameters to a synthatic connective is determined by the *)
@@ -104,43 +105,43 @@ G |- R1[t1...tm]
 (* G ++ L1[] |- X?                            *)
 
 let pp_atomic_prop st fmt (tag, ts) =
-	let _ = pp_print_string fmt (G.lookup_sym tag) in
-	let _ = pp_print_string fmt "[" in
-	let _ = Pp.pp_list_aux fmt "," (Pp.pp_tm_aux st fmt 0) ts in
-	let _ = pp_print_string fmt "]" in
-(*	let _ = pp_synth_defn st fmt tag in *)
-	()
+  let _ = pp_print_string fmt (G.lookup_sym tag) in
+  let _ = pp_print_string fmt "[" in
+  let _ = Pp.pp_list_aux fmt "," (Pp.pp_tm_aux st fmt 0) ts in
+  let _ = pp_print_string fmt "]" in
+  (*	let _ = pp_synth_defn st fmt tag in *)
+  ()
 
 let pp_goal st fmt g =
-	match g with
-		| Atomic a -> pp_atomic_prop st fmt a
-		| Any -> pp_print_string fmt "Any"
+  match g with
+  | Atomic a -> pp_atomic_prop st fmt a
+  | Any -> pp_print_string fmt "Any"
 
 let pp_sequent st fmt (assms, g) =
-	let _ = pp_open_hovbox fmt 0 in
-	let _ = Pp.pp_list_aux fmt "," (pp_atomic_prop st fmt) assms in
-	let _ = pp_print_string fmt " |- " in
-	let _ = pp_goal st fmt g in
-	let _ = pp_close_box fmt () in
-	()
+  let _ = pp_open_hovbox fmt 0 in
+  let _ = Pp.pp_list_aux fmt "," (pp_atomic_prop st fmt) assms in
+  let _ = pp_print_string fmt " |- " in
+  let _ = pp_goal st fmt g in
+  let _ = pp_close_box fmt () in
+  ()
 
 let pp_rule st fmt {params = p; uvars = u; premises = prems; conclusion = c} =
-	let pps = pp_print_string fmt in
-	begin
-		pp_print_flush fmt ();
-		pp_open_hovbox fmt 0;
-		pps "[";
-		Pp.pp_list_aux fmt "," (fun i -> pps ("x_" ^ (string_of_int i))) (Top.TagSet.elements p);
-		pps "] [";
-		Pp.pp_list_aux fmt "," (fun i -> pps ("x_" ^ (string_of_int i))) (Top.TagSet.elements u);
-		pps "]"; pp_force_newline fmt ();
-		Pp.pp_list_aux fmt " " (fun j -> (pp_sequent st fmt j; pp_print_cut fmt ())) prems;
-		pp_force_newline fmt ();
-		pps "----------------------------------";
-		pp_force_newline fmt ();
-		pp_goal st fmt c;
-		pp_force_newline fmt ()
-	end
+  let pps = pp_print_string fmt in
+  begin
+    pp_print_flush fmt ();
+    pp_open_hovbox fmt 0;
+    pps "[";
+    Pp.pp_list_aux fmt "," (fun i -> pps ("x_" ^ (string_of_int i))) (Top.TagSet.elements p);
+    pps "] [";
+    Pp.pp_list_aux fmt "," (fun i -> pps ("x_" ^ (string_of_int i))) (Top.TagSet.elements u);
+    pps "]"; pp_force_newline fmt ();
+    Pp.pp_list_aux fmt " " (fun j -> (pp_sequent st fmt j; pp_print_cut fmt ())) prems;
+    pp_force_newline fmt ();
+    pps "----------------------------------";
+    pp_force_newline fmt ();
+    pp_goal st fmt c;
+    pp_force_newline fmt ()
+  end
 
 
 end
