@@ -208,37 +208,11 @@ module Make (G:Globals.T)(TMS:Tm.S)(PROPS:Prop.S)(RULES:Rule.S) = struct
         (Top.TagSet.empty, []) ts in
     (params, sequents)
 
-  let unify_term (t1 : Tm_rep.tm) (t2 : Tm_rep.tm) : bool = t1 == t2
-  let unify_atom atom1 atom2 : bool =
-    let (tag1, args1) = atom1 in
-    let (tag2, args2) = atom2 in
-    tag1 = tag2 &&
-    List.for_all2 unify_term args1 args2
 
-  (** For now, just checks whether two goals are the same *)
-  let unify_goal (g1:goal) (g2:goal) : bool =
-    match g1,  g2 with
-    | Any, _ -> true
-    | _, Any -> true
-    | Atomic atom1, Atomic atom2 ->
-      unify_atom atom1 atom2
 
   let try_apply_id (sequent : sequent) : bool =
     let (assumptions, goal) = sequent in
-    List.exists (fun hyp -> unify_goal goal (Atomic hyp)) assumptions
-
-  (** Given a rule and a sequent we want to prove, return none if the rule can't be applied and
-      a list of new subgoals if it does apply. *)
-  let try_inst_rule (rule : RULES.t) (sequent : RULES.sequent) : (sequent list) option =
-    let (assumptions, goal) = sequent in
-    let {premises; conclusion;params=_;uvars=_} = rule in
-    if unify_goal goal conclusion then
-      Some (List.map (fun (top_lhs, top_rhs) : sequent ->
-          (* TODO make sure that concatenating the rule's premise's assumptions
-             with the goal's assumptions is the correct things to do here. *)
-          (assumptions @ top_lhs, top_rhs)) premises)
-    else
-      None
+    List.exists (fun hyp -> RULES.unify_goal goal (Atomic hyp)) assumptions
 
   (** Get right-focused rules that can solve the given goal *)
   let get_rrules (goal : RULES.goal) : RULES.t list =
@@ -259,7 +233,7 @@ module Make (G:Globals.T)(TMS:Tm.S)(PROPS:Prop.S)(RULES:Rule.S) = struct
 
     (* Some helper functions *)
     let rule_applies rule =
-      begin match try_inst_rule rule obligation with
+      begin match RULES.apply rule obligation with
       | None -> false
       | Some subgoals -> List.for_all solve_sequent subgoals
       end in
