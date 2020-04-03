@@ -1,7 +1,5 @@
-(* open Arg *)
 open Util
 open Common
-open List
 open Range
 
 module G : Globals.T = struct
