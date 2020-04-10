@@ -99,10 +99,6 @@ let do_file fn =
   process_file ast;
   close_in buffer
 
-(*
-let ast_from_string str = ast_from_lexbuf "string" (Lexing.from_string str)
-*)
-
 let argspec = [
   ("-debug", Arg.Set (PROVER.debug_flag), "turn on debugging");
   (* 	("-backtrack", Arg.Set (Prover.backtrack_flag), "show backtracking"); *)
@@ -112,7 +108,7 @@ let argspec = [
 ]
 
 let _ =
-  let _ = Format.set_max_boxes 10 in
+  Format.set_max_boxes 10;
   Printf.printf("Running TP\n");
   try
     Arg.parse argspec do_file "Default command-line parser"
