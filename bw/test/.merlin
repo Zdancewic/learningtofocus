@@ -1,0 +1,20 @@
+EXCLUDE_QUERY_DIR
+B /Users/nick/.opam/4.10.0/lib/bytes
+B /Users/nick/.opam/4.10.0/lib/ocaml
+B /Users/nick/.opam/4.10.0/lib/ounit2
+B /Users/nick/.opam/4.10.0/lib/ounit2/advanced
+B /Users/nick/.opam/4.10.0/lib/stdlib-shims
+B ../../_build/default/bw/lib/.lib_bw.objs/byte
+B ../../_build/default/bw/test/.test.eobjs/byte
+B ../../_build/default/common/.common.objs/byte
+B ../../_build/default/util/.util.objs/byte
+S /Users/nick/.opam/4.10.0/lib/bytes
+S /Users/nick/.opam/4.10.0/lib/ocaml
+S /Users/nick/.opam/4.10.0/lib/ounit2
+S /Users/nick/.opam/4.10.0/lib/ounit2/advanced
+S /Users/nick/.opam/4.10.0/lib/stdlib-shims
+S ../lib
+S .
+S ../../common
+S ../../util
+FLG -open Dune__exe -w @1..3@5..28@30..39@43@46..47@49..57@61..62-40 -strict-sequence -strict-formats -short-paths -keep-locs

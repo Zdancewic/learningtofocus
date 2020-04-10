@@ -20,9 +20,6 @@ module type S = sig
     | Atomic of atomic_prop
     | Any       (* arises from the left rule for false *)
 
-  (** For now, just checks whether two goals are the same *)
-  val unify_goal : goal -> goal -> bool
-
   type sequent = assumptions * goal
 
   type t = {
@@ -35,6 +32,7 @@ module type S = sig
   (** Try to use a rule to prove a given sequent. Return a list of premises that
       need to be proven, or none if the rule doesn't apply. *)
   val apply : t -> sequent -> (sequent list) option
+  val apply_id : sequent -> bool
   val instantiate : t -> (Tm_rep.tm list) -> t
   val pp_sequent : (int -> string) -> Format.formatter -> sequent -> unit
   val pp_rule : (int -> string) -> Format.formatter -> t -> unit
@@ -53,7 +51,13 @@ module Make(G:Globals.T)(TMS:Tm.S) : S  = struct
   type assumptions = atomic_prop list
   type goal =
     | Atomic of atomic_prop
-    | Any       (* arises from the left rule for false *)
+    (** Any is a singleton metavariable that indicates the RHS of a rule can be
+       instantiated in any way *)
+    | Any
+
+  type unification = {
+    any: goal;
+  }
 
   let unify_term (t1 : Tm_rep.tm) (t2 : Tm_rep.tm) : bool = t1 == t2
   let unify_atom atom1 atom2 : bool =
@@ -61,12 +65,21 @@ module Make(G:Globals.T)(TMS:Tm.S) : S  = struct
     let (tag2, args2) = atom2 in
     tag1 = tag2 &&
     List.for_all2 unify_term args1 args2
-  let unify_goal (g1:goal) (g2:goal) : bool =
-    match g1,  g2 with
-    | Any, _ -> true
-    | _, Any -> true
+  let unify_goal (g1:goal) (g2:goal) : unification option =
+    begin match g1,  g2 with
+    | Any, g | g, Any -> Some { any = g }
     | Atomic atom1, Atomic atom2 ->
-      unify_atom atom1 atom2
+      if unify_atom atom1 atom2 then
+        (* Any did not appear in either goal, so we don't care about what to substitute for it *)
+        Some { any = Any }
+      else
+        None
+    end
+  let subst_any_goal (g : goal) (any : goal) : goal =
+    begin match g with
+    | Any -> any
+    | _ -> g
+    end
 
 
   type sequent = assumptions * goal
@@ -80,16 +93,24 @@ module Make(G:Globals.T)(TMS:Tm.S) : S  = struct
   ; conclusion : goal
   }
 
+  let apply_id (sequent : sequent) : bool =
+    let (assumptions, goal) = sequent in
+    List.exists (fun hyp ->
+        match unify_goal goal (Atomic hyp) with
+        | Some _ -> true
+        | None -> false) assumptions
+
   let apply (rule : t) (obligation : sequent) : (sequent list) option =
     let (assumptions, goal) = obligation in
     let {premises; conclusion;params=_;uvars=_} = rule in
-    if unify_goal goal conclusion then
-      Some (List.map (fun (top_lhs, top_rhs) : sequent ->
+    begin match unify_goal goal conclusion with
+      | Some { any } ->
+        Some (List.map (fun (top_lhs, top_rhs) : sequent ->
           (* TODO make sure that concatenating the rule's premise's assumptions
              with the goal's assumptions is the correct things to do here. *)
-          (assumptions @ top_lhs, top_rhs)) premises)
-    else
-      None
+          (assumptions @ top_lhs, subst_any_goal top_rhs any)) premises)
+      | None -> None
+    end
 
 
   let msubst_tap   (m : substitution) (id, ts) : atomic_prop =

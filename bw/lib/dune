@@ -1,0 +1,4 @@
+(library
+ (name lib_bw)
+ (wrapped false)
+ (libraries util common))

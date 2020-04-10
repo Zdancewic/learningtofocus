@@ -40,7 +40,10 @@ module Make (G:Globals.T)(TMS:Tm.S)(PROPS:Prop.S)(RULES:Rule.S) = struct
     List.fold_left (fun r (ps2, ts2, l2) ->
 	(List.map (fun (ps1, ts1, l1) -> (Top.TagSet.union ps1 ps2, Top.TagSet.union ts1 ts2, l1@l2)) prem1)@r) [] prem2
 
-  let cross_product2 prem1 prem2 =
+  let cross_product2
+      (prem1 : (Top.TagSet.t * Top.TagSet.t * 'a list * 'b) list)
+      (prem2 : (Top.TagSet.t * Top.TagSet.t * 'a list) list) :
+      (Top.TagSet.t * Top.TagSet.t * 'a list * 'b) list =
     List.fold_left (fun r (ps2, ts2, l2) ->
 	(List.map (fun (ps1, ts1, l1, g1) ->
              (Top.TagSet.union ps1 ps2, Top.TagSet.union ts1 ts2, l1@l2, g1)) prem1) @ r) [] prem2
@@ -78,30 +81,33 @@ module Make (G:Globals.T)(TMS:Tm.S)(PROPS:Prop.S)(RULES:Rule.S) = struct
     let _ = debug "invert_left: " in
     match g with
     | [] ->
-      begin match c with
-	| GAny -> []
-	| GAtomic(a, ts) -> [(m, (d, GAtomic(a, ts)))]
-	| GProp p -> [(m, (d, GProp p))]
-      end
+      [(m, (d, c))]
+      (* begin match c with
+       * TODO I think the any case below is causing a bug
+	     *   | GAny -> []
+	     *   | GAtomic(a, ts) -> [(m, (d, GAtomic(a, ts)))]
+	     *   | GProp p -> [(m, (d, GProp p))]
+       * end *)
     | (p::g') ->
-      let _ = debug (Pp.string_of_pprop G.lookup_sym p) in
-      (match p.Hashcons.node with
+      debug (Pp.string_of_pprop G.lookup_sym p);
+      begin match p.Hashcons.node with
        | P_one  -> invert_left m d g' c
        | P_zero -> []
        | P_or(p1, p2) ->
-	 let j1 = (invert_left m d (p1::g') c) in
-	 let j2 = (invert_left m d (p2::g') c) in
-	 (j1 @ j2)
+	         let j1 = (invert_left m d (p1::g') c) in
+	         let j2 = (invert_left m d (p2::g') c) in
+	           (j1 @ j2)
        | P_ex p1 ->
-	 let x = G.gen_tag () in
-	 invert_left (Top.TagSet.add x m) d ((open_pt (tm_param x) p1) :: g') c
-       | P_shift n -> invert_left m (n::d) g' c)
+	         let x = G.gen_tag () in
+	           invert_left (Top.TagSet.add x m) d ((open_pt (tm_param x) p1) :: g') c
+       | P_shift n -> invert_left m (n::d) g' c
+      end
 
 
   (* u is the unification variables introduced by the outer scopes *)
   (* n is a negative formula that is a synthetic connective *)
   (* returns: *)
-  (*  parameters * unification vars * premises   *)
+  (*  parameters * unification vars * premises * goal??  *)
   (* side effect: *)
   (*   create the left rules for the sub-connectives and add them to the global rules database *)
   and focus_left (u : Top.TagSet.t) (n : nprop) : (Top.TagSet.t * Top.TagSet.t * sequent list * goal) list =
@@ -110,7 +116,7 @@ module Make (G:Globals.T)(TMS:Tm.S)(PROPS:Prop.S)(RULES:Rule.S) = struct
     | N_top    ->  failwith "shouldn't focus-left on Top"
     | N_prop(_,_) ->
       [(Top.TagSet.empty, u, [],
-	Atomic(synthetic_of_nprop n))]   (* propositions are always considered rules, they have no subrules *)
+	      Atomic(synthetic_of_nprop n))]   (* propositions are always considered rules, they have no subrules *)
     | N_and(n1, n2) ->
       let prem1 = focus_left u n1 in
       let prem2 = focus_left u n2 in
@@ -127,8 +133,11 @@ module Make (G:Globals.T)(TMS:Tm.S)(PROPS:Prop.S)(RULES:Rule.S) = struct
       let ts = invert_left Top.TagSet.empty [] [p] GAny in
       (* Create the synthetic subrules by side effect *)
       (* then *)
-      let synthetic (ns, g) = (List.map (mk_synthetic_rule_of_nprop u) ns, synthetic_of_goal u g) in
-      let (params, prems) = List.fold_left (fun (params, prems) (p, j) -> (Top.TagSet.union params p, (synthetic j)::prems)) (Top.TagSet.empty, []) ts in
+      let synthetic ((ns, g) : nprop list * inversion_goal) : atomic_prop list * goal  =
+        (List.map (mk_synthetic_rule_of_nprop u) ns, synthetic_of_goal u g) in
+      let (params, prems) = List.fold_left (fun (params, prems) (p, j) ->
+          (Top.TagSet.union params p, (synthetic j)::prems))
+          (Top.TagSet.empty, []) ts in
       [(params, u, prems, Any)]
 
   and focus_right u p : (Top.TagSet.t * Top.TagSet.t * sequent list) list =
@@ -154,9 +163,11 @@ module Make (G:Globals.T)(TMS:Tm.S)(PROPS:Prop.S)(RULES:Rule.S) = struct
   (** Add synthetic rules for n to rules, return the synthetic connective *)
   and mk_synthetic_rule_of_nprop (u : Top.TagSet.t) (n : nprop) : atomic_prop =
     let id = n.Hashcons.tag in
-    let _ = if Hashtbl.mem rules id then () else
+    begin if Hashtbl.mem rules id then
+        ()
+      else
         List.iter (Hashtbl.add rules id) (make_left_rules u n)
-    in
+    end;
     synthetic_of_nprop n
 
   and synthetic_of_goal u g =
@@ -199,6 +210,8 @@ module Make (G:Globals.T)(TMS:Tm.S)(PROPS:Prop.S)(RULES:Rule.S) = struct
     let _ = debug "make_synthetics" in
     (* get a list of open stable sequents to prove *)
     let ts = invert_right Top.TagSet.empty [] g n in
+
+
     let synthetic ((ns, g) : nprop list * inversion_goal) : atomic_prop list * goal =
       (List.map (mk_synthetic_rule_of_nprop Top.TagSet.empty) ns,
        synthetic_of_goal Top.TagSet.empty g) in
@@ -210,9 +223,6 @@ module Make (G:Globals.T)(TMS:Tm.S)(PROPS:Prop.S)(RULES:Rule.S) = struct
 
 
 
-  let try_apply_id (sequent : sequent) : bool =
-    let (assumptions, goal) = sequent in
-    List.exists (fun hyp -> RULES.unify_goal goal (Atomic hyp)) assumptions
 
   (** Get right-focused rules that can solve the given goal *)
   let get_rrules (goal : RULES.goal) : RULES.t list =
@@ -224,40 +234,78 @@ module Make (G:Globals.T)(TMS:Tm.S)(PROPS:Prop.S)(RULES:Rule.S) = struct
   let get_rules ((tag, _) : RULES.atomic_prop) : RULES.t list =
     Hashtbl.find_all rules tag
 
+  type search_result =
+    | Search_succeeded
+    | Search_failed
+    | Limit_reached
 
-  (** Search rules to solve a given goal *)
-  let rec solve_sequent (obligation : sequent) : bool =
+  (** Succeeds if f succeeds on everything in list (or list is empty). Fails if f fails on anything in list. *)
+  let results_for_all f list =
+    List.fold_left (fun acc x ->
+        match acc with
+        | Search_succeeded  -> f x
+        | Search_failed -> Search_failed
+        | Limit_reached ->
+          begin match f x with
+            | Search_succeeded -> Limit_reached
+            | r -> r
+          end) Search_succeeded list
+
+  (** Succeeds if f succeeds on anything in list. Fails if f fails on everything in list (or list is empty). *)
+  let results_exists f list =
+    List.fold_left (fun acc x ->
+        match acc with
+         | Search_succeeded -> Search_succeeded
+         | Search_failed -> f x
+         | Limit_reached ->
+           begin match f x with
+             | Search_failed -> Limit_reached
+             | r -> r
+           end) Search_failed list
+
+  (** Search rules to find a derivation of a given goal that is no more than max_depth rules deep. *)
+  let rec solve_sequent_limit (max_depth : int) (obligation : sequent) : search_result =
     debug (Printf.sprintf "Solving %s\n"
              (Pp.string_of_x (fun fmt -> (RULES.pp_sequent G.lookup_sym fmt)) obligation));
-    let (assumptions, goal) = obligation in
+    if max_depth < 1 then
+      Limit_reached
+    else
+      let (assumptions, goal) = obligation in
 
-    (* Some helper functions *)
-    let rule_applies rule =
-      begin match RULES.apply rule obligation with
-      | None -> false
-      | Some subgoals -> List.for_all solve_sequent subgoals
+      (* Apply a given rule and, if possible, continue the proof at the next level of depth. *)
+      let rule_applies rule =
+        begin match RULES.apply rule obligation with
+          | None -> Search_failed
+          | Some subgoals ->
+            debug (Printf.sprintf "apply %s\n" (Pp.string_of_x (RULES.pp_rule G.lookup_sym) rule));
+            results_for_all (solve_sequent_limit (max_depth - 1)) subgoals
+        end in
+      let some_rule_applies rules =
+        results_exists rule_applies rules in
+
+      (* Right focus on atomic prop: does ID rule apply? *)
+      let immediate = RULES.apply_id obligation in
+      if immediate then Search_succeeded else
+        (* Right focus on synthetic connective *)
+        let rrules = get_rrules goal in
+        let lrules = List.concat_map get_rules assumptions in
+        some_rule_applies (rrules @ lrules)
+
+  (** Search rules to solve a given goal *)
+  let solve_sequent (obligation : sequent) : bool =
+    let rec helper (max_depth) acc =
+      begin match acc with
+        | Limit_reached ->
+          let search = solve_sequent_limit max_depth obligation in
+          helper (max_depth + 1) search
+        | Search_succeeded -> true
+        | Search_failed -> false
       end in
-    let some_rule_applies rules =
-      List.exists rule_applies rules in
-
-    (* Right focus on atomic prop: does ID rule apply? *)
-    let immediate = try_apply_id obligation in
-    (* Right focus on synthetic connective *)
-    let rrules = get_rrules goal in
-    let right_focus = some_rule_applies rrules in
-    (* Left focus on synthetic connective *)
-    let left_focus = List.exists (fun focus ->
-        let lrules = get_rules focus in
-        debug (Printf.sprintf "Left focus rules for %s:\n%s\n"
-          (Pp.string_of_x (RULES.pp_atomic_prop G.lookup_sym) focus)
-          (Pp.string_of_x (fun fmt -> Pp.pp_list_aux fmt "\n  " (RULES.pp_rule G.lookup_sym fmt))
-             lrules));
-        some_rule_applies lrules) assumptions in
-    immediate || right_focus || left_focus
+    helper 1 Limit_reached
 
   (** Iterate through each proof obligation and check whether it unifies with a hypothesis
       or the conclusion of any rule *)
-  let search_goals _ (* params *) : (RULES.atomic_prop list * goal) list -> bool =
+  let search_goals _ : sequent list -> bool =
     List.for_all solve_sequent
 end
 

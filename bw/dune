@@ -1,4 +1,4 @@
 (executable
-  (name main)
-  (libraries util common)
-  (promote (until-clean)))
+ (name main)
+ (libraries util common lib_bw)
+ (promote (until-clean)))
