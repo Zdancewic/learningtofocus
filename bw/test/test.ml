@@ -33,11 +33,16 @@ module PROCESS = Processor.Make(G)
 
 (* Unit tests *)
 let dir = "tests/"
-let files = Sys.readdir dir
+let hasSuffix suffix s =
+  let s_len = String.length s in
+  let suffix_len = String.length suffix in
+  String.sub s (s_len - suffix_len) suffix_len = suffix
 
-let tests =  "Tests directory" >::: Array.to_list
-               (Array.map (fun fn -> fn >::
-                                     (fun _ -> assert_bool "Proof search failed." (PROCESS.do_file (dir ^ fn))))
+let files = List.filter (hasSuffix ".p") (Array.to_list (Sys.readdir dir))
+
+let tests =  "Tests directory" >:::
+               (List.map (fun fn -> fn >::
+                                    (fun _ -> assert_bool "Proof search failed." (PROCESS.do_file (dir ^ fn))))
                   files)
 
 let _ = run_test_tt_main tests
