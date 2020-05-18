@@ -8,6 +8,8 @@ G, L1[t1...tm]  |- C
 where C is either 'any' or q[t1...tm]
 *)
 open Format
+open Tm_rep
+open Util
 
 module type S = sig
   (* Atomic propositions can either be: *)
@@ -55,32 +57,60 @@ module Make(G:Globals.T)(TMS:Tm.S) : S  = struct
        instantiated in any way *)
     | Any
 
-  type unification = {
-    any: goal;
+  type tm_unification = (Top.tag * tm) list
+  type prop_unification = {
+    any: goal option;
+    terms: tm_unification;
   }
 
-  let unify_term (t1 : Tm_rep.tm) (t2 : Tm_rep.tm) : bool = t1 == t2
-  let unify_atom atom1 atom2 : bool =
+
+  let uni_empty : tm_unification = []
+  let uni_single (t : Top.tag) (e : tm) : tm_unification =
+    [(t, e)]
+  let uni_combine (u1 : tm_unification) (u2 : tm_unification) : tm_unification option =
+    List.fold_right
+      (fun (tag, tm) ->
+         function
+         | None -> None
+         | Some u ->
+           if List.mem_assoc tag u then
+             None
+           else
+             Some ((tag, tm) :: u))
+      u2 (Some u1)
+
+  let rec unify_terms (l1 : tm list) (l2 : tm list) : tm_unification option =
+    List.fold_left2 (fun acc t1' t2' ->
+        let t_uni_opt = (unify_term t1' t2') in
+        begin match acc, t_uni_opt with
+          | None, _ | _, None -> None
+          | Some uni, Some t_uni -> uni_combine uni t_uni
+        end)
+      (Some uni_empty) l1 l2
+
+  and unify_term (t1 : tm) (t2 : tm) : tm_unification option =
+    match t1.Hashcons.node, t2.Hashcons.node with
+    | Tm_uvar i, Tm_uvar j -> if i == j then Some uni_empty else None
+    | t, Tm_param a | Tm_param a, t -> Some (uni_single a (Globals.HTm.hashcons (G.tm_table) t))
+    | Tm_fun (f, l1), Tm_fun (g, l2) ->
+      let uni_lists = unify_terms l1 l2 in
+      if f == g then uni_lists else None
+    | _, _ -> None
+
+  let unify_atom atom1 atom2 : tm_unification option =
     let (tag1, args1) = atom1 in
     let (tag2, args2) = atom2 in
-    tag1 = tag2 &&
-    List.for_all2 unify_term args1 args2
-  let unify_goal (g1:goal) (g2:goal) : unification option =
-    begin match g1,  g2 with
-    | Any, g | g, Any -> Some { any = g }
-    | Atomic atom1, Atomic atom2 ->
-      if unify_atom atom1 atom2 then
-        (* Any did not appear in either goal, so we don't care about what to substitute for it *)
-        Some { any = Any }
-      else
-        None
-    end
-  let subst_any_goal (g : goal) (any : goal) : goal =
-    begin match g with
-    | Any -> any
-    | _ -> g
-    end
+    if tag1 == tag2 then unify_terms args1 args2 else None
 
+  let unify_goal (g1:goal) (g2:goal) : prop_unification option =
+    begin match g1, g2 with
+      | Any, g | g, Any -> Some { any = Some g; terms = uni_empty }
+      | Atomic atom1, Atomic atom2 ->
+        begin match unify_atom atom1 atom2 with
+          | None -> None
+          | Some tm_uni -> Some { any = None; terms = tm_uni }
+        end
+    end
 
   type sequent = assumptions * goal
 
@@ -100,15 +130,46 @@ module Make(G:Globals.T)(TMS:Tm.S) : S  = struct
         | Some _ -> true
         | None -> false) assumptions
 
+  let rec apply_uni_tm (uni : tm_unification) (t : tm) : tm =
+    match t.Hashcons.node with
+    | Tm_param tag ->
+      if List.mem_assoc tag uni then
+        List.assoc tag uni
+      else t
+    | Tm_fun (tag, args) ->
+      (* TODO could tag be in domain of uni??? *)
+      TMS.tm_fun tag (List.map (apply_uni_tm uni) args)
+    | _ -> t
+
+  and apply_uni_sequent (uni : prop_unification) ((lhs, rhs) : sequent) : sequent =
+    ((List.map (apply_uni_atomic uni.terms) lhs), apply_uni_goal uni rhs)
+
+  and apply_uni_atomic (uni : tm_unification) ((tag, args) : atomic_prop) : atomic_prop =
+    (tag, List.map (apply_uni_tm uni) args)
+
+  and apply_uni_goal ({any; terms} : prop_unification) : goal -> goal =
+    function
+    | Any ->
+      begin match any with
+      | None -> Any
+      | Some g -> g
+      end
+    | Atomic atom -> Atomic (apply_uni_atomic terms atom)
+
+  (** Add some given assumptions to the sequent's LHS *)
+  let weaken_sequent (assumptions : assumptions) ((lhs, rhs) : sequent) : sequent =
+    (assumptions @ lhs, rhs)
+
   let apply (rule : t) (obligation : sequent) : (sequent list) option =
     let (assumptions, goal) = obligation in
     let {premises; conclusion;params=_;uvars=_} = rule in
     begin match unify_goal goal conclusion with
-      | Some { any } ->
-        Some (List.map (fun (top_lhs, top_rhs) : sequent ->
-          (* TODO make sure that concatenating the rule's premise's assumptions
-             with the goal's assumptions is the correct things to do here. *)
-          (assumptions @ top_lhs, subst_any_goal top_rhs any)) premises)
+      | Some uni ->
+        let premises_weakened : sequent list = List.map (weaken_sequent assumptions) premises in
+        (* TODO make sure that concatenating the rule's premise's assumptions
+                with the goal's assumptions is the correct things to do here. *)
+        let premises_unified = List.map (apply_uni_sequent uni) premises_weakened in
+        Some premises_unified
       | None -> None
     end
 
