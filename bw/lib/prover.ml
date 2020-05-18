@@ -265,8 +265,9 @@ module Make (G:Globals.T)(TMS:Tm.S)(PROPS:Prop.S)(RULES:Rule.S) = struct
 
   (** Search rules to find a derivation of a given goal that is no more than max_depth rules deep. *)
   let rec solve_sequent_limit (max_depth : int) (obligation : sequent) : search_result =
-    debug (Printf.sprintf "Solving %s\n"
-             (Pp.string_of_x (fun fmt -> (RULES.pp_sequent G.lookup_sym fmt)) obligation));
+    debug (Printf.sprintf "Solving %s at max_depth %d\n"
+             (Pp.string_of_x (fun fmt -> (RULES.pp_sequent G.lookup_sym fmt)) obligation)
+             max_depth);
     if max_depth < 1 then
       Limit_reached
     else

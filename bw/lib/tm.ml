@@ -1,5 +1,5 @@
 open Util
-    
+
 module type S =
 sig
   open Tm_rep
@@ -13,17 +13,17 @@ sig
   val close_tt_aux : int -> Top.tag -> tm -> tm
   val close_tt : Top.tag -> tm -> tm
 
-  val subst_tt : Top.tag -> tm -> tm -> tm 
+  val subst_tt : Top.tag -> tm -> tm -> tm
   val msubst_tt : (Top.tag * tm) list -> tm -> tm
 
-  val fv_t : tm -> Top.TagSet.t  
-end  
+  val fv_t : tm -> Top.TagSet.t
+end
 
 module Make(G:Globals.T) : S = struct
   open Tm_rep
   let tm_uvar i  = Globals.HTm.hashcons G.tm_table (Tm_uvar i)
   let tm_param a = Globals.HTm.hashcons G.tm_table (Tm_param a)
-  let tm_fun f l = Globals.HTm.hashcons G.tm_table (Tm_fun (f, l)) 
+  let tm_fun f l = Globals.HTm.hashcons G.tm_table (Tm_fun (f, l))
 
   (* open replaces a *bound* variable with a term *)
   let rec open_tt_aux i u t =
@@ -32,7 +32,7 @@ module Make(G:Globals.T) : S = struct
     | Tm_param _ -> t
     | Tm_fun (f, ts) -> tm_fun f (List.map (open_tt_aux i u) ts)
 
-  let open_tt = open_tt_aux 0							
+  let open_tt = open_tt_aux 0
 
   let rec close_tt_aux i x t =
     match t.Hashcons.node with
@@ -59,7 +59,4 @@ module Make(G:Globals.T) : S = struct
     | Tm_uvar _ -> Top.TagSet.empty
     | Tm_param y -> Top.TagSet.singleton y
     | Tm_fun (_, ts) -> List.fold_left (fun a t -> Top.TagSet.union a (fv_t t)) Top.TagSet.empty ts
-end 
-
-
-
+end
