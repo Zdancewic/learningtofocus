@@ -160,7 +160,7 @@ module Make(G:Globals.T)(TMS:Tm.S) : S  = struct
   let weaken_sequent (assumptions : assumptions) ((lhs, rhs) : sequent) : sequent =
     (assumptions @ lhs, rhs)
 
-  let apply (rule : t) (obligation : sequent) : (sequent list) option =
+  let apply (rule : t) (obligation : sequent) : ((sequent list) * tm_unification) option =
     let (assumptions, goal) = obligation in
     let {premises; conclusion;params=_;uvars=_} = rule in
     begin match unify_goal goal conclusion with
@@ -169,7 +169,7 @@ module Make(G:Globals.T)(TMS:Tm.S) : S  = struct
         (* TODO make sure that concatenating the rule's premise's assumptions
                 with the goal's assumptions is the correct things to do here. *)
         let premises_unified = List.map (apply_uni_sequent uni) premises_weakened in
-        Some premises_unified
+        Some (premises_unified, uni)
       | None -> None
     end
 
