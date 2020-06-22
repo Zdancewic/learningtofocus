@@ -61,7 +61,7 @@ module Make (G:Globals.T)(TMS:Tm.S)(PROPS:Prop.S)(RULES:Rule.S) = struct
   (* returns a list of open stable sequents -- formulas in those sequents are to be used as synthetic connectives *)
   let rec invert_right (m : Top.TagSet.t) (d : nprop list) (g : pprop list) (n : nprop)
     : (Top.TagSet.t * (nprop list * inversion_goal)) list =
-    let _ = debug ("invert_right: " ^ (Pp.string_of_nprop G.lookup_sym n)) in
+    debug ("invert_right: " ^ (Pp.string_of_nprop G.lookup_sym n));
     match n.Hashcons.node with
     | N_top    -> []
     | N_prop(a,ts) ->
@@ -234,34 +234,95 @@ module Make (G:Globals.T)(TMS:Tm.S)(PROPS:Prop.S)(RULES:Rule.S) = struct
   let get_rules ((tag, _) : RULES.atomic_prop) : RULES.t list =
     Hashtbl.find_all rules tag
 
-  type search_result =
-    | Search_succeeded
-    | Search_failed
-    | Limit_reached
+  type search_result = {
+    unifs : tm_unification Seq.t;
+    more  : bool
+  }
 
-  (** Succeeds if f succeeds on everything in list (or list is empty). Fails if f fails on anything in list. *)
-  let results_for_all f list =
-    List.fold_left (fun acc x ->
-        match acc with
-        | Search_succeeded  -> f x
-        | Search_failed -> Search_failed
-        | Limit_reached ->
-          begin match f x with
-            | Search_succeeded -> Limit_reached
-            | r -> r
-          end) Search_succeeded list
+  let seq_is_empty seq =
+    match seq with
+    | Seq.Nil -> true
+    | _ -> false
 
-  (** Succeeds if f succeeds on anything in list. Fails if f fails on everything in list (or list is empty). *)
-  let results_exists f list =
-    List.fold_left (fun acc x ->
-        match acc with
-         | Search_succeeded -> Search_succeeded
-         | Search_failed -> f x
-         | Limit_reached ->
-           begin match f x with
-             | Search_failed -> Limit_reached
-             | r -> r
-           end) Search_failed list
+  let rec seq_append (seq1 : 'a Seq.t) (seq2 : 'a Seq.t) () : 'a Seq.node =
+    match seq1 () with
+    | Seq.Nil -> seq2 ()
+    | Seq.Cons (x, xs) -> Seq.Cons (x, (seq_append xs seq2))
+
+  let result_append { unifs = unifs1; more = more1 } { unifs = unifs2; more = more2 } =
+    { unifs = seq_append unifs1 unifs2; more = more1 || more2 }
+
+  let result_empty : search_result = { unifs = Seq.empty; more = false }
+  let result_trivial : search_result = { unifs = Seq.return RULES.unif_empty; more = false }
+  let result_cons (unif : tm_unification) (result : search_result) =
+    { unifs = (fun () -> Seq.Cons (unif, result.unifs)); more = result.more }
+
+  (** Apply a given unification to all rules in a list *)
+  let apply_unif_sequents (unif : tm_unification) rules : sequent list =
+    List.map (apply_unif_sequent { any = None; terms = unif }) rules
+
+  (* Old behavior: Succeeds if f succeeds on everything in list (or list is
+     empty). Fails if f fails on anything in list. *)
+  (** Return lazy list of all of the unifications from calling f on *every*
+      element of the list.
+
+      Empty sequence indicates there is no suitable unification. *)
+  let rec results_for_all (solve_sequent : sequent -> search_result)
+                          (list : sequent list) : search_result =
+      match list with
+      | [] -> result_trivial
+      | x :: xs ->
+        let res = solve_sequent x in
+        Seq.fold_left (fun prev_result (unif : tm_unification) ->
+            let rest_result = results_for_all solve_sequent (apply_unif_sequents unif xs) in
+            let new_unifs = (Seq.filter_map (RULES.unif_combine unif) rest_result.unifs) in
+            let new_result = { unifs = new_unifs; more = rest_result.more } in
+            result_append prev_result new_result)
+          { unifs = Seq.empty; more = res.more } res.unifs
+
+  (*
+    List.fold_right (fun obligation prev_result ->
+        apply_unif_seq obligation
+      )
+      list result_trivial
+  *)
+
+
+  (* Old behavior: Succeeds if f succeeds on anything in list. Fails if f fails
+     on everything in list (or list is empty). *)
+  (** Return concatenated lazy list of all of the results from calling f on *some*
+      element of list. *)
+  let results_exists (f : RULES.t -> search_result) (list : RULES.t list) : search_result =
+    List.fold_left (fun prev_result x ->
+      result_append prev_result (f x))
+      result_empty list 
+
+    (* If we reach the depth limit, try to apply another rule to find a shorter
+       proof.
+
+       If we hit the depth limit at any point and by the end, we still
+       haven't found a proof, then propagate the Limit_reached exception. *)
+    (* let (seq, limit_reached) = List.fold_right
+     *     (fun x (seq, limit_reached) ->
+     *        try seq_append (f x) seq
+     *        with
+     *        | Limit_reached -> (seq, true))
+     *     list
+     *     (Seq.empty, false) in
+     * if limit_reached && seq_is_empty then
+     *   raise Limit_reached
+     * else
+     *   seq *)
+
+    (* List.fold_left (fun acc x ->
+     *     match acc with
+     *      | Search_succeeded -> Search_succeeded
+     *      | Search_failed -> f x
+     *      | Limit_reached ->
+     *        begin match f x with
+     *          | Search_failed -> Limit_reached
+     *          | r -> r
+     *        end) Search_failed list *)
 
   (** Search rules to find a derivation of a given goal that is no more than max_depth rules deep. *)
   let rec solve_sequent_limit (max_depth : int) (obligation : sequent) : search_result =
@@ -269,40 +330,60 @@ module Make (G:Globals.T)(TMS:Tm.S)(PROPS:Prop.S)(RULES:Rule.S) = struct
              (Pp.string_of_x (fun fmt -> (RULES.pp_sequent G.lookup_sym fmt)) obligation)
              max_depth);
     if max_depth < 1 then
-      Limit_reached
+      { unifs = Seq.empty; more = true }
     else
       let (assumptions, goal) = obligation in
 
       (* Apply a given rule and, if possible, continue the proof at the next level of depth. *)
       let rule_applies rule =
         begin match RULES.apply rule obligation with
-          | None -> Search_failed
-          | Some subgoals ->
+          | None -> { unifs = Seq.empty; more = false }
+          | Some (subgoals, _(* unif *)) ->
             debug (Printf.sprintf "apply %s\n" (Pp.string_of_x (RULES.pp_rule G.lookup_sym) rule));
+            (* TODO combine unif with the unifications in the result *)
             results_for_all (solve_sequent_limit (max_depth - 1)) subgoals
         end in
       let some_rule_applies rules =
         results_exists rule_applies rules in
 
       (* Right focus on atomic prop: does ID rule apply? *)
-      let immediate = RULES.apply_id obligation in
-      if immediate then Search_succeeded else
+      let immediate =
+        let (assumptions, goal) = obligation in
+        List.fold_right (fun hyp res ->
+            let goal_unif = (unify_goal goal (Atomic hyp)) in
+            match goal_unif with
+              | None -> res
+              | Some unif -> result_cons unif.terms res)
+          assumptions result_empty
+      in
+
+      let nonimmediate =
         (* Right focus on synthetic connective *)
         let rrules = get_rrules goal in
         let lrules = List.concat_map get_rules assumptions in
         some_rule_applies (rrules @ lrules)
+      in
+
+      result_append immediate nonimmediate
+
 
   (** Search rules to solve a given goal *)
   let solve_sequent (obligation : sequent) : bool =
-    let rec helper (max_depth) acc =
-      begin match acc with
-        | Limit_reached ->
+    let rec helper max_depth (acc : search_result) =
+      let is_empty =
+        match acc.unifs () with
+        | Seq.Nil -> true
+        | _ -> false
+      in
+      if is_empty then
+        (if acc.more then
           let search = solve_sequent_limit max_depth obligation in
           helper (max_depth + 1) search
-        | Search_succeeded -> true
-        | Search_failed -> false
-      end in
-    helper 1 Limit_reached
+        else false)
+      else
+        true
+    in
+    helper 1 {unifs = Seq.empty; more = true}
 
   (** Iterate through each proof obligation and check whether it unifies with a hypothesis
       or the conclusion of any rule *)

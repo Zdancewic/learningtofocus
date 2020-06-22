@@ -1,7 +1,7 @@
 open Util
 
-type tm = t Hashcons.hash_consed 
-and t = 
+type tm = t Hashcons.hash_consed
+and t =
   | Tm_uvar of int      (* bound variable *)
   | Tm_param of Top.tag     (* free (e.g. unification) variable / parameter *)
   | Tm_fun of Top.tag * tm list  (* arity is implicit *)
