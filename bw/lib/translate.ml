@@ -11,13 +11,13 @@ module Make(G : Globals.T)(TMS:Tm.S)(PROPS:Prop.S) = struct
     | Binding of lab * prop
     | Goal of prop
 
-  let rec tm_to_tm m t =
+  let rec tm_to_tm m (t : Ast.tm) : Tm_rep.tm =
     match t with
     | Var x -> tm_param (List.assoc x m)
     | Fun (s, tms) -> tm_fun (G.gen_sym s) (List.map (tm_to_tm m) tms)
 
 
-  let rec prop_to_pprop m p =
+  let rec prop_to_pprop (m : (Ast.var * Top.tag) list) (p : Ast.prop) : Prop_rep.pprop =
     match p with
     | BinOp (p1, bop, p2) ->
       (match bop with
@@ -32,7 +32,7 @@ module Make(G : Globals.T)(TMS:Tm.S)(PROPS:Prop.S) = struct
     | Eq _  -> failwith "Term EQ primitive '=' not supported"
     | True  -> p_one ()
     | False -> p_zero ()
-  and prop_to_nprop m p =
+  and prop_to_nprop (m : (Ast.var * Top.tag) list) (p : Ast.prop) : Prop_rep.nprop =
     let prop_not m p = n_imp (prop_to_pprop m p) (n_shift (p_zero ())) in
     match p with
     | Prop (s, tms) -> n_prop (G.gen_sym s) (List.map (tm_to_tm m) tms)
