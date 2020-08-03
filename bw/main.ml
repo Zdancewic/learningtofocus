@@ -12,6 +12,9 @@ module G : Globals.T = struct
   type nprop_t = Globals.NProp.t
   let nprop_table = Globals.NProp.create 251
 
+  type proof_t = Globals.HProof.t
+  let proof_table = Globals.HProof.create 251
+
   type sym_t = (int,string * int) Hashtbl.t
   let sym_table = (Hashtbl.create 251 : sym_t)
 

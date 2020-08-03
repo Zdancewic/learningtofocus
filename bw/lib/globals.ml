@@ -3,6 +3,7 @@ open Util
 module HTm = Hashcons.Make(Tm_rep)
 module PProp = Hashcons.Make(Prop_rep.PPropRep)
 module NProp = Hashcons.Make(Prop_rep.NPropRep)
+module HProof = Hashcons.Make (Proof_rep)
 
 module type T =
 sig
@@ -14,6 +15,9 @@ sig
 
   type nprop_t = NProp.t
   val nprop_table : nprop_t
+
+  type proof_t = HProof.t
+  val proof_table : proof_t
 
   type sym_t = (int, (string * int)) Hashtbl.t
   val sym_table : sym_t
