@@ -105,9 +105,8 @@ module Make(G:Globals.T)(TMS:Tm.S) : S  = struct
     match t1.Hashcons.node, t2.Hashcons.node with
     | Tm_uvar i, Tm_uvar j -> if i == j then Some unif_empty else None
     | t, Tm_param a | Tm_param a, t -> Some (unif_single a (Globals.HTm.hashcons (G.tm_table) t))
-    | Tm_fun (f, l1), Tm_fun (g, l2) ->
-      let uni_lists = unify_terms l1 l2 in
-      if f == g then uni_lists else None
+    | Tm_fun (f, l1), Tm_fun (g, l2) when f == g ->
+      unify_terms l1 l2
     | _, _ -> None
 
   let unify_atom atom1 atom2 : tm_unification option =

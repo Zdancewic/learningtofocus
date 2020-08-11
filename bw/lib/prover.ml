@@ -55,7 +55,7 @@ module Make (G:Globals.T)(TMS:Tm.S)(PROPS:Prop.S)(RULES:Rule.S) = struct
     let id = n.Hashcons.tag in
     match n.Hashcons.node with
     | N_prop(a, ts) -> (a, ts)
-    | _ -> (id, List.map tm_param  (Top.TagSet.elements (fv_nprop n)))
+    | _ -> (id, List.map tm_param (Top.TagSet.elements (fv_nprop n)))
 
 
   (* returns a list of open stable sequents -- formulas in those sequents are to be used as synthetic connectives *)
@@ -140,6 +140,8 @@ module Make (G:Globals.T)(TMS:Tm.S)(PROPS:Prop.S)(RULES:Rule.S) = struct
           (Top.TagSet.empty, []) ts in
       [(params, u, prems, Any)]
 
+  (* takes   uvars, prop *)
+  (* returns (params, uvars, premises) *)
   and focus_right u p : (Top.TagSet.t * Top.TagSet.t * sequent list) list =
     let _ = debug ("focus_right: "^ (Pp.string_of_pprop G.lookup_sym p)) in
     match p.Hashcons.node with
@@ -175,9 +177,9 @@ module Make (G:Globals.T)(TMS:Tm.S)(PROPS:Prop.S)(RULES:Rule.S) = struct
     | GAny -> Any
     | GAtomic(a, ts) -> Atomic(a, ts)
     | GProp p -> (let id = p.Hashcons.tag in
-		  let _ = if Hashtbl.mem rules id then () else
-		      List.iter (Hashtbl.add rules id) (make_right_rules u p) in
-	          synthetic_of_pprop p)
+		  if Hashtbl.mem rules id then () else
+		      List.iter (Hashtbl.add rules id) (make_right_rules u p);
+	    synthetic_of_pprop p)
 
 
   and make_left_rules (u : Top.TagSet.t) (n : nprop) : RULES.t list =
@@ -215,10 +217,12 @@ module Make (G:Globals.T)(TMS:Tm.S)(PROPS:Prop.S)(RULES:Rule.S) = struct
     let synthetic ((ns, g) : nprop list * inversion_goal) : atomic_prop list * goal =
       (List.map (mk_synthetic_rule_of_nprop Top.TagSet.empty) ns,
        synthetic_of_goal Top.TagSet.empty g) in
+
     (* combine all proof obligations from ts and call synthetic to make the synthetic rules *)
     let (params, sequents) = List.fold_left
         (fun (params, prems) (p, j) -> (Top.TagSet.union params p, (synthetic j)::prems))
         (Top.TagSet.empty, []) ts in
+
     (params, sequents)
 
 
@@ -390,333 +394,3 @@ module Make (G:Globals.T)(TMS:Tm.S)(PROPS:Prop.S)(RULES:Rule.S) = struct
   let search_goals _ : sequent list -> bool =
     List.for_all solve_sequent
 end
-
-(*
-  let rec rev_lookup n (p:prop) (g:ctxt) =
-  match g with
-  | [] -> raise (Backtrack n)
-  | (l,q)::rest -> if p = q then l else rev_lookup n p rest
-
-
-(* D;G |- p ; . ==> m s.t. D;G |- m : p *)
-(* Decompose the right asynchronous propositions *)
-  let rec decompose_goal n (d:ctxt) (g:ctxt) (p:prop) : (pf * un) =
-  let debug_judgment () =
-  if (!debug_flag) then (
-(* let avoids = Pp.string_of_x (fun fmt -> Pp.pp_list_aux fmt "," (Pp.pp_prop_aux fmt 0)) avoid in *)
-  Printf.printf "decompose_goal: %s ; %s |- %s\n"  (string_of_ctxt d)
-  (string_of_ctxt g)
-  (string_of_prop p)
-  ) else () in
-
-(* let _ = debug_judgment () in *)
-  match p with
-  | Prop_param _ -> decompose_hyps n d g p
-  | Prop_pred _  -> decompose_hyps n d g p
-  | Prop_and (p1, p2) ->
-  (match g with
-  | [] ->
-  let (m1, r1) = decompose_goal n d g p1 in
-  let (m2, r2) = decompose_goal n d g p2 in
-  (Pf_pair (m1,m2), Un_and (r1, r2))
-(* Note, don't add p to the  set here *)
-  | _ -> decompose_hyps n d g p)
-  | Prop_imp (p1, p2) ->
-  let l = gensym_lab () in
-  let (m1, r1) = decompose_goal n d ((l,p1)::g) p2 in
-  (Pf_abs (p1, close_mm l m1), r1)
-  | Prop_or (p1, p2) -> decompose_hyps n d g p
-  | Prop_not p1 ->
-  let l = gensym_lab () in
-  let a = gensym_var () in
-  let (m1, r1) = decompose_goal n d ((l,p1)::g) (Prop_param a) in
-  (Pf_not (p1, close_mm l m1), r1)
-  | Prop_top -> (Pf_unit, Un_top)
-  | Prop_bot -> decompose_hyps n d g p
-  | Prop_all (h, p1) ->
-  let x = gensym_var () in
-  let (m1, r1) = decompose_goal n d g (open_pt (Tm_fv x) p1) in
-  (Pf_all (h, close_mt x m1), Un_all (close_rt x r1))
-  | Prop_ex (h, p1) -> decompose_hyps n d g p
-
-(* Decompose the left asynchronous propositions *)
-  and decompose_hyps n d (g:ctxt) p =
-  let debug_judgment () =
-  if (!debug_flag) then (
-(* let avoids = Pp.string_of_x (fun fmt -> Pp.pp_list_aux fmt "," (Pp.pp_prop_aux fmt 0)) avoid in *)
-  Printf.printf "decompose_hyps: %s ; %s |- %s\n"  (string_of_ctxt d)
-  (string_of_ctxt g)
-  (string_of_prop p)
-  ) else () in
-
-(* let _ = debug_judgment () in  *)
-  match g with
-  | [] -> (
-  match p with
-  | Prop_and(q1, q2) -> decompose_goal n d g p
-  | _ -> focus n d p
-  )
-  | (l,q)::gs ->
-  match q with
-  | Prop_param _ -> decompose_hyps n ((l,q)::d) gs p
-  | Prop_pred  _ -> decompose_hyps n ((l,q)::d) gs p
-  | Prop_and (q1, q2) ->
-  let l1 = gensym_lab_hint "pfst" in
-  let l2 = gensym_lab_hint "psnd" in
-  let (m1, r1) = decompose_hyps n d ((l1,q1)::(l2,q2)::gs) p in
-  (Pf_let (Pf_fst (Pf_flab l),
-  close_mm l1 (Pf_let (Pf_snd (Pf_flab l),
-  close_mm l2 m1))),
-  r1)
-  | Prop_imp _   -> decompose_hyps n ((l,q)::d) gs p
-  | Prop_or (q1, q2) ->
-  let l1 = gensym_lab () in
-  let l2 = gensym_lab () in
-  let (m1, r1) = decompose_hyps n d ((l1,q1)::gs) p in
-  let (m2, r2) = decompose_hyps n d ((l2,q2)::gs) p in
-  (Pf_case (Pf_flab l,
-  close_mm l1 m1,
-  close_mm l2 m2),
-  Un_and (r1, r2))
-  | Prop_not _ -> decompose_hyps n ((l, q)::d) gs p
-  | Prop_top   -> decompose_hyps n d gs p
-  | Prop_bot   -> (Pf_abort (p, Pf_flab l), Un_top)
-  | Prop_all _ -> decompose_hyps n ((l, q)::d) gs p
-  | Prop_ex (h, q1) ->
-  let x = gensym_var_hint h in
-  let l1 = gensym_lab () in
-  let (m1, r1) = decompose_hyps n d ((l1, open_pt (Tm_fv x) q1)::gs) p in
-  (Pf_unpack (h, Pf_flab l,
-  close_mt x (close_mm l1 m1)), close_rt x r1)
-
-  and focus n d p =
-  let debug_judgment d p =
-  if (!debug_flag) then (
-  Printf.printf "focus:\n  %s |- %s\n"
-  (string_of_ctxt d)
-  (string_of_prop p);
-  debug_breakpt ()
-  ) else () in
-
-  let _ = debug_judgment d p in
-  match d with
-  | [] -> (match p with
-  | Prop_param _ -> raise (Backtrack n)
-  | Prop_pred _  -> raise (Backtrack n)
-  | Prop_and  _  -> failwith "focus on /\ shouldn't happen."
-  | Prop_imp  _  -> failwith "focus on -> shouldn't happen."
-  | Prop_not  _  -> failwith "focus on ~p shouldn't happen."
-  | Prop_all  _  -> failwith "focus on All shouldn't happen."
-  | Prop_top    -> failwith "focus on top shouldn't happen."
-  | _ -> focus_r n [] p)
-  | _ ->
-(* There is a don't know choice *)
-  try
-  match p with
-  | Prop_or _ -> focus_r n d p
-  | Prop_bot  -> focus_r n d p
-  | Prop_ex _ -> focus_r n d p
-  | (Prop_pred _  | Prop_param _) ->
-  let l = rev_lookup n p d in (Pf_flab l, Un_top)
-  | _ -> raise Not_found
-  with
-  | Not_found -> focus_l n d p
-  | Backtrack x ->
-  (backtrack "Backtracked from focus_r" (x - n);
-  focus_l n d p)
-
-  and focus_r n d p =
-  let debug_judgment d p =
-  if (!debug_flag) then (
-  Printf.printf "focus_r:\n  %s |- %s\n"
-  (string_of_ctxt d)
-  (string_of_prop p)
-  ) else () in
-
-  let _ = debug_judgment d p in
-  match p with
-  | Prop_param _ -> decompose_goal (n+1) d [] p
-  | Prop_pred _  -> decompose_goal (n+1) d [] p
-  | Prop_and _   -> decompose_goal (n+1) d [] p
-  | Prop_imp _   -> decompose_goal (n+1) d [] p
-  | Prop_or (p1, p2) ->
-  (try
-  let (m1, r1) = focus_r n d p1 in
-  (Pf_inl (p2, m1), r1)
-  with
-  | (Backtrack x) ->
-  let _ = backtrack "Backtracked from focus-r [Or]" (x - n) in
-  let (m1, r1) = focus_r n d p2 in
-  (Pf_inr (p1, m1), r1)
-  )
-  | Prop_not _   -> decompose_goal (n+1) d [] p
-  | Prop_top     -> decompose_goal (n+1) d [] p
-  | Prop_bot     -> debug "focus_r on False"; raise (Backtrack n) (* let l = rev_lookup p d in (Pf_flab l, Un_top) *)
-  | Prop_all _   -> decompose_goal (n+1) d [] p
-  | Prop_ex  _   -> failwith "Not implemented"  (* Unification *)
-
-  and focus_l n d p =
-  let rec focus_l_inner tried l q d p =
-  let debug_judgment tried l q d p =
-  if (!debug_flag) then (
-(* let s = Pp.string_of_x (fun fmt -> Pp.pp_list_aux fmt "," (Pp.pp_prop_aux fmt 0))  in *)
-  Printf.printf "focus-l-inner:\n%s  [%s : %s]  %s |- %s\n" (string_of_ctxt tried) (string_of_lab l)
-  (string_of_prop q)
-  (string_of_ctxt d)
-  (string_of_prop p);
-  debug_breakpt ()
-  ) else () in
-
-  let _ = debug_judgment tried l q d p in
-  match q with
-  | Prop_param _ ->   (* Fixme: Unification *)
-  if p = q then (Pf_flab l, Un_top) else
-  focus_l_help ((l,q)::tried) d p
-
-  | Prop_pred _ ->    (* Fixme: Unification *)
-  if p = q  then (Pf_flab l, Un_top) else
-  focus_l_help ((l,q)::tried) d p
-
-  | Prop_and (q1, q2) ->  (* Pfenning says not to blur here, I don't understand why *)
-  (let l1 = gensym_lab () in
-  let l2 = gensym_lab () in
-  try let (m1, r1) = focus_l_inner tried l1 q1 ((l2, q2)::d) p in
-  (Pf_let (Pf_fst (Pf_flab l),
-  close_mm l1 (Pf_let (Pf_snd (Pf_flab l), (close_mm l2 m1)))), r1)
-  with (Backtrack x) ->
-  (backtrack "Backtracked from focus-l [And]" (x - n);
-  focus_l_help ((l,q)::tried) d p))
-
-  | Prop_imp (q1, q2) ->
-(* Trying an alternative strategy suggested by Dyckhoff '92 *)
-(* Contraction-free sequent calculi for intuitionistic logic *)
-(* This generates proof terms that aren't in normal form *)
-  (let l2 = gensym_lab_hint "l2" in
-  try
-  match q1 with
-  | (Prop_param _ | Prop_pred _ | Prop_bot) ->
-  let l3 = rev_lookup n q1 (d @ tried) in
-  let (m2, r2) = decompose_goal (n+1) (d @ tried) [(l2, q2)] p in
-  (Pf_let (Pf_app (Pf_flab l, Pf_flab l3),
-  (close_mm l2 m2)), r2)
-  | Prop_and(p1, p2) ->
-  let (m2, r2) = focus_l_inner tried l2 (Prop_imp (p1, Prop_imp(p2, q2))) d p in
-  (Pf_let (Pf_abs (q1, Pf_abs (q2, Pf_app (Pf_flab l, (Pf_pair(Pf_blab 1, Pf_blab 0))))),
-  (close_mm l2 m2)), r2)
-  | Prop_or(p1, p2) ->
-  let l3 = gensym_lab_hint "l3" in
-  let (m2, r2) = focus_l_inner tried l2 (Prop_imp (p1, q2)) ((l3, Prop_imp(p2, q2))::d) p in
-  (Pf_let (Pf_abs (q1, Pf_app (Pf_flab l, (Pf_inl (p2, Pf_blab 0)))),
-  close_mm l2 (Pf_let (Pf_abs (q2, Pf_app (Pf_flab l, (Pf_inr (p1, Pf_blab 0)))),
-  (close_mm l3 m2)))), r2)
-  | Prop_top ->
-  let (m2, r2) = focus_l_inner tried l2 q2 d p in
-  (Pf_let (Pf_app (Pf_flab l, Pf_unit), close_mm l2 m2), r2)
-  | Prop_imp(p1, p2) ->
-  let l3 = gensym_lab_hint "l3" in
-  let (m3, r3) = decompose_goal (n+1) (d @ tried) [(l2, q2)] p in
-  let (m2, r2) = decompose_goal (n+1) (d @ (l3, Prop_imp(p2, q2)) :: tried) [] (Prop_imp (p1, p2)) in
-  (Pf_let ((* l2 *) Pf_app (Pf_flab l,
-  Pf_let ((*l3*) (Pf_abs (p2, Pf_app (Pf_flab l, (Pf_abs (p1, Pf_blab 1)))),
-  (close_mm l3 m2)))),
-  close_mm l2 m3), Un_and (r2, r3))
-  | _ -> failwith "unimplemented"
-  with (Backtrack x) ->
-  (backtrack "Backtracked from focus-l [Imp]" (x - n);
-  focus_l_help ((l,q)::tried) d p))
-
-  | Prop_or _ -> decompose_hyps (n+1) (d @ tried) [(l,q)] p
-  | Prop_not q1 ->
-  (try
-  let (m1, r1) = focus_r (n+1) (d @ (l,q) :: tried) q1 in
-  (Pf_contra(Pf_flab l, p, m1), r1)
-  with Backtrack x ->
-  (backtrack "Backtracked from focus-l [Not]" (x - n);
-  focus_l_help ((l,q)::tried) d p))
-  | Prop_bot  -> decompose_hyps (n+1) (d @ tried) [(l, q)] p
-  | Prop_all _ -> failwith "not implemented (unification)"
-  | Prop_ex _ -> decompose_hyps  (n+1) (d @ tried) [(l, q)] p
-  | _ -> failwith "unimplemented"
-
-  and focus_l_help tried d p =
-  match d with
-  | [] -> raise (Backtrack n)
-  | (l,q)::ds ->
-  if List.mem q (List.map snd tried) then
-  focus_l_help ((l,q)::tried) ds p
-  else
-  focus_l_inner tried l q ds p
-  in
-  focus_l_help [] d p
-
-  exception Unification_failure
-*)
-
-
-(*
-  let rec unify j l a =
-  match l with
-  | [] -> a
-  | Un_top :: rest -> unify j rest a
-  | Un_and (r1, r2) :: rest -> unify j (r1::r2::rest) a
-  | Un_eq_prop(p1, p2) :: rest ->
-  let ans = unify_prop p1 p2 in
-  unify j (apply_subst ans rest) ans::a
-  | Un_eq_tm(t1, t2) :: rest ->
-  let ans = unify_term t1 t2 in
-  unify j (apply_subst ans rest) ans::a
-  | Un_all r1 :: rest ->
-*)
-
-(* SEQUENTS:
-
-   D ; O |- m :  Goal
-
-   where Goal ::=  p ; .
-   |  . ; p (s.t. p is right synchronous)
-   D ::=  set of left-syncronous propositions
-
-
-   O ::= *list* of labeled propositions
-
-   Want to search for a proof of
-   -   O |- Goal
-
-   Step 1: construct the right asynchronous propositions
-   - share reduced hypotheses in the Prop_and case?
-
-   Step 2: destruct the left asynchronous propositions
-
-   - when a left synchronous proposition is added to D
-   - check whether it is a "forward" proposition
-   i.e. if the terms on the rhs are subterms of the lhs
-   if it is a forward proposition, rather than just
-   adding it to D, "forward" resolve D (i.e. add all
-   consequences of the synchronous proposition)
-   Put the proposition in a "holding" area until
-   new propositions trigger it again.
-
-   - check whether it is relevant to the goal
-   (i.e. an instance constructs the goal)
-
-   Innefficiencies / Questions:
-   - Why recompute the left-asynchronous decomposions in the AND-R rule?
-   - Why completely decompose the left-asynchronous hypotheses if the
-   proof could be completed earlier?
-   - What order should the hypotheses be considered in?
-   (Assuming that there is some kind of short-cutting)
-   - Why not do a bit of forward search when adding a left synchronous
-   proposition to D?
-
-
-   Proof term for this transformation:
-
-   u1:A -> B, u2 : A |- u2 : A    u1:A -> B, u2: A, u3:B |- m : C
-   ---------------------------------------------------------------
-   u1:A -> B, u2:A |- let u3 = (u1 u2) in m : C
-
-
-
-
-
-*)
