@@ -1,6 +1,6 @@
 open Util
 
-module Make (G:Globals.T)(TMS:Tm.S)(PROPS:Prop.S)(RULES:Rule.S) = struct
+module Make (G:Globals.T)(TMS:Tm.S)(PROPS:Prop.S)(PROOFS:Proof.S)(RULES:Rule.S) = struct
   open Tm_rep
   open Prop_rep
   (*  open Pp *)
@@ -110,17 +110,24 @@ module Make (G:Globals.T)(TMS:Tm.S)(PROPS:Prop.S)(RULES:Rule.S) = struct
   (*  parameters * unification vars * premises * goal??  *)
   (* side effect: *)
   (*   create the left rules for the sub-connectives and add them to the global rules database *)
-  and focus_left (u : Top.TagSet.t) (n : nprop) : (Top.TagSet.t * Top.TagSet.t * sequent list * goal) list =
+  and focus_left (u : Top.TagSet.t) (n : nprop) : (Top.TagSet.t * Top.TagSet.t * sequent list * goal * proof_builder) list =
     debug ("focus_left: " ^ (Pp.string_of_nprop G.lookup_sym n));
     match n.Hashcons.node with
     | N_top    ->  failwith "shouldn't focus-left on Top"
     | N_prop(_,_) ->
       [(Top.TagSet.empty, u, [],
-	      Atomic(synthetic_of_nprop n))]   (* propositions are always considered rules, they have no subrules *)
+	      Atomic(synthetic_of_nprop n),
+        fun _subproofs _terms -> PROOFS.pr_var (-1))]   (* propositions are always considered rules, they have no subrules *)
     | N_and(n1, n2) ->
       let prem1 = focus_left u n1 in
+      let prem1_lifted = List.map (fun (x, y, z, w, builder) -> (x, y, z, w, fun proofs terms ->
+                         PROOFS.pr_n_projL (PROOFS.pr_var (-1)) (builder proofs terms)
+      )) prem1 in
       let prem2 = focus_left u n2 in
-      prem1 @ prem2
+      let prem2_lifted = List.map (fun (x, y, z, w, builder) -> (x, y, z, w, fun proofs terms ->
+                         PROOFS.pr_n_projR (PROOFS.pr_var (-1)) (builder proofs terms)
+      )) prem2 in
+      prem1_lifted @ prem2_lifted
     | N_imp(p1, n2) ->
       let prem1 = focus_right u p1 in
       let prem2 = focus_left u n2 in
@@ -140,7 +147,7 @@ module Make (G:Globals.T)(TMS:Tm.S)(PROPS:Prop.S)(RULES:Rule.S) = struct
           (Top.TagSet.empty, []) ts in
       [(params, u, prems, Any)]
 
-  and focus_right u p : (Top.TagSet.t * Top.TagSet.t * sequent list) list =
+  and focus_right u p : (Top.TagSet.t * Top.TagSet.t * sequent list * proof_builder) list =
     let _ = debug ("focus_right: "^ (Pp.string_of_pprop G.lookup_sym p)) in
     match p.Hashcons.node with
     | P_one -> []
@@ -182,11 +189,12 @@ module Make (G:Globals.T)(TMS:Tm.S)(PROPS:Prop.S)(RULES:Rule.S) = struct
 
   and make_left_rules (u : Top.TagSet.t) (n : nprop) : RULES.t list =
     debug ("\n\nmake_left_rules: " ^ Pp.string_of_nprop G.lookup_sym n);
-    let helper (u_gen, p_gen, prems, goal) =
+    let helper (u_gen, p_gen, prems, goal, builder) =
       {params = p_gen;
        uvars = Top.TagSet.union u u_gen;
        premises = prems;
-       conclusion = goal}
+       conclusion = goal;
+       builder = builder}
     in match n.Hashcons.node with
     | N_prop _ -> [] (* TODO shouldn't this include the identity rule? *)
     | _ -> List.map helper (focus_left u n)
@@ -195,11 +203,12 @@ module Make (G:Globals.T)(TMS:Tm.S)(PROPS:Prop.S)(RULES:Rule.S) = struct
   and make_right_rules u p =
     debug ("\n\nmake_right_rules: " ^ Pp.string_of_pprop G.lookup_sym p);
     let goal = synthetic_of_pprop p in
-    let helper (u_gen, p_gen, prems) =
+    let helper (u_gen, p_gen, prems, builder) =
       {params = p_gen;
        uvars = Top.TagSet.union u u_gen;
        premises = prems;
-       conclusion = goal}
+       conclusion = goal;
+       builder = builder}
     in
     match p.Hashcons.node with
     | P_zero -> []
@@ -295,7 +304,7 @@ module Make (G:Globals.T)(TMS:Tm.S)(PROPS:Prop.S)(RULES:Rule.S) = struct
   let results_exists (f : RULES.t -> search_result) (list : RULES.t list) : search_result =
     List.fold_left (fun prev_result x ->
       result_append prev_result (f x))
-      result_empty list 
+      result_empty list
 
     (* If we reach the depth limit, try to apply another rule to find a shorter
        proof.

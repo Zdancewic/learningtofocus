@@ -9,6 +9,7 @@ where C is either 'any' or q[t1...tm]
 *)
 open Format
 open Tm_rep
+open Proof_rep
 open Util
 
 module type S = sig
@@ -24,11 +25,13 @@ module type S = sig
 
   type sequent = assumptions * goal
 
+  type proof_builder = proof list -> tm list -> proof
   type t = {
     params : Top.TagSet.t  (* binder for the free variables of this rule *)
   ; uvars : Top.TagSet.t   (* unification variables created by this rule *)
   ; premises : sequent list   (* maybe a set? *)
   ; conclusion : goal
+  ; builder : proof_builder
   }
 
   type tm_unification = (Top.tag * tm) list
@@ -48,7 +51,7 @@ module type S = sig
   val apply : t -> sequent -> ((sequent list) * tm_unification) option
 
   val apply_id : sequent -> bool
-  val instantiate : t -> (Tm_rep.tm list) -> t
+  (* val instantiate : t -> (Tm_rep.tm list) -> t *)
   val pp_sequent : (int -> string) -> Format.formatter -> sequent -> unit
   val pp_rule : (int -> string) -> Format.formatter -> t -> unit
   val pp_goal : (int -> string) -> Format.formatter -> goal -> unit
@@ -127,13 +130,15 @@ module Make(G:Globals.T)(TMS:Tm.S) : S  = struct
 
   type sequent = assumptions * goal
 
-  type substitution = (Top.tag * Tm_rep.tm) list
+  (* type substitution = (Top.tag * Tm_rep.tm) list *)
 
+  type proof_builder = proof list -> tm list -> proof
   type t = {
     params : Top.TagSet.t  (* binder for the free variables of this rule *)
   ; uvars : Top.TagSet.t   (* unification variables created by this rule *)
   ; premises : sequent list   (* maybe a set? *)
   ; conclusion : goal
+  ; builder : proof_builder
   }
 
   let apply_id (sequent : sequent) : bool =
@@ -175,7 +180,7 @@ module Make(G:Globals.T)(TMS:Tm.S) : S  = struct
 
   let apply (rule : t) (obligation : sequent) : ((sequent list) * tm_unification) option =
     let (assumptions, goal) = obligation in
-    let {premises; conclusion;params=_;uvars=_} = rule in
+    let {premises; conclusion; params=_; uvars=_; builder=_} = rule in
     begin match unify_goal goal conclusion with
       | Some uni ->
         let premises_weakened : sequent list = List.map (weaken_sequent assumptions) premises in
@@ -187,25 +192,26 @@ module Make(G:Globals.T)(TMS:Tm.S) : S  = struct
     end
 
 
-  let msubst_tap   (m : substitution) (id, ts) : atomic_prop =
-    (id, List.map (TMS.msubst_tt m) ts)
-  let msubst_tassm (m : substitution) : assumptions -> assumptions =
-    List.map (msubst_tap m)
-  let msubst_tg    (m : substitution) : goal -> goal = function
-    | Atomic ap -> Atomic (msubst_tap m ap)
-    | Any -> Any
-
-(* Modify this to take the unification context into account *)
-(* Note that the order of the parameters to a synthatic connective is determined by the *)
-(* order of the Top.tags of its free parameters *)
-let instantiate (r : t) (ts : Tm_rep.tm list) =
-	let m = List.combine (Top.TagSet.elements r.params) ts in
-	{params = Top.TagSet.empty;
-	 uvars = r.uvars;  (* Need to generate new unification 'frame' and open the premises and conlusions with  that too *)
-	                   (* perhaps this can be combined into a single msubst? *)
-	 premises = List.map (fun (assms, goal) -> (msubst_tassm m assms, msubst_tg m goal)) r.premises;
-	 conclusion = msubst_tg m r.conclusion
-	}
+(*   let msubst_tap   (m : substitution) (id, ts) : atomic_prop =
+ *     (id, List.map (TMS.msubst_tt m) ts)
+ *   let msubst_tassm (m : substitution) : assumptions -> assumptions =
+ *     List.map (msubst_tap m)
+ *   let msubst_tg    (m : substitution) : goal -> goal = function
+ *     | Atomic ap -> Atomic (msubst_tap m ap)
+ *     | Any -> Any
+ *
+ * (\* Modify this to take the unification context into account *\)
+ * (\* Note that the order of the parameters to a synthatic connective is determined by the *\)
+ * (\* order of the Top.tags of its free parameters *\)
+ * let instantiate (r : t) (ts : Tm_rep.tm list) : t =
+ * 	let m = List.combine (Top.TagSet.elements r.params) ts in
+ * 	{params = Top.TagSet.empty;
+ * 	 uvars = r.uvars;  (\* Need to generate new unification 'frame' and open the premises and conlusions with  that too *\)
+ * 	                   (\* perhaps this can be combined into a single msubst? *\)
+ * 	 premises = List.map (fun (assms, goal) -> (msubst_tassm m assms, msubst_tg m goal)) r.premises;
+ * 	 conclusion = msubst_tg m r.conclusion;
+ *    builder = fun proofs terms -> r.builder proofs terms (\* FIXME: how should unification happen here? *\)
+ * 	} *)
 
 
 (* Unification maps must keep track of the 'time stamp' of when the variable was generated *)
@@ -250,7 +256,7 @@ let pp_sequent st fmt (assms, g) =
   let _ = pp_close_box fmt () in
   ()
 
-let pp_rule st fmt {params = p; uvars = u; premises = prems; conclusion = c} =
+let pp_rule st fmt {params = p; uvars = u; premises = prems; conclusion = c; builder = _} =
   let pps = pp_print_string fmt in
   begin
     pp_print_flush fmt ();

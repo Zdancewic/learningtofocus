@@ -207,6 +207,7 @@ module Make (G : Globals.T) (TMS : Tm.S) (PRPS : Prop.S) = (* : S *) struct
              p 0)
     | _ -> None
 
+  (* these should roughly match the rules from McLaughlin and Pfenning's "Efficient Intuitionistic Theorem Proving with the Polarized Inverse Method" *)
   let rec infer_type gamma (proof : proof) =
     match proof.node with
     | Pr_var i -> get_mangled_var gamma i
