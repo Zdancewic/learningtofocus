@@ -1,3 +1,5 @@
 _build
-.merlin
+.merlin*
 *.exe
+.DS_STORE
+*.p.disable
