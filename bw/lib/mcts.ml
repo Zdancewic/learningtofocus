@@ -69,12 +69,23 @@ module RuleStrategy (RULES:Rule.S) : Strategy = struct
     | Some (_, next_child) -> next_child
     | None -> tree (* tree has no children *)
 
+  let step (obligation : sequent) : state list =
+    let rule_applies rule : state option =
+      begin match RULES.apply rule obligation with
+        | None -> None
+        | Some (subgoals, _) ->
+          Some subgoals
+      end
+    in
+    List.fold_right (fun rule states ->
+        match rule_applies rule with
+        | None -> states
+        | Some new_state -> new_state :: states) [] rules
+
   let expand_child : state -> state list = function
     | [] -> []
     | obligation :: rest ->
-      (* TODO define step *)
-      List.map (fun obligations -> obligations :: rest) (step obligation)
-
+      List.map (fun (obligations : state) -> List.append obligations rest) (step obligation)
 end
 
 module Make (STRATEGY:Strategy) = struct
