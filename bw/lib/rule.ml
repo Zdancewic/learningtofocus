@@ -179,6 +179,7 @@ module Make(G:Globals.T)(TMS:Tm.S) : S  = struct
     (assumptions @ lhs, rhs)
 
   let apply (rule : t) (obligation : sequent) : ((sequent list) * tm_unification) option =
+    (* TODO: here we may need to generate fresh unification variable names and replace the rule's ones with the new ones *)
     let (assumptions, goal) = obligation in
     let {premises; conclusion; params=_; uvars=_; builder=_} = rule in
     begin match unify_goal goal conclusion with
