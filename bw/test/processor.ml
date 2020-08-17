@@ -6,9 +6,10 @@ open Range
 module Make(G : Globals.T) = struct
   module TMS = Tm.Make(G);;
   module PROPS = Prop.Make(G)(TMS);;
+  module PROOFS = Proof.Make(G)(TMS)(PROPS);;
   module TRANS = Translate.Make(G)(TMS)(PROPS);;
   module RULES = Rule.Make(G)(TMS);;
-  module PROVER = Prover.Make(G)(TMS)(PROPS)(RULES);;
+  module PROVER = Prover.Make(G)(TMS)(PROPS)(PROOFS)(RULES);;
 
   let ast_from_lexbuf filename buf =
     try

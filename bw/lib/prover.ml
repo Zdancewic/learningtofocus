@@ -131,7 +131,13 @@ module Make (G:Globals.T)(TMS:Tm.S)(PROPS:Prop.S)(PROOFS:Proof.S)(RULES:Rule.S) 
     | N_imp(p1, n2) ->
       let prem1 = focus_right u p1 in
       let prem2 = focus_left u n2 in
-      cross_product2 prem2 prem1    (* do the 'goal' side first *)
+      List.fold_left (fun r (ps2, ts2, l2, _builder2) ->
+	      (List.map
+          (fun (ps1, ts1, l1, g1, _builder1) ->
+            (Top.TagSet.union ps1 ps2, Top.TagSet.union ts1 ts2, l1@l2, g1, (fun _subproofs _terms -> PROOFS.pr_var (-1)))
+          ) prem2
+        ) @ r
+      ) [] prem1
     | N_all n1 -> (* ? *)
       (* Add a unification variable *)
       let x = G.gen_tag () in
@@ -145,7 +151,7 @@ module Make (G:Globals.T)(TMS:Tm.S)(PROPS:Prop.S)(PROOFS:Proof.S)(RULES:Rule.S) 
       let (params, prems) = List.fold_left (fun (params, prems) (p, j) ->
           (Top.TagSet.union params p, (synthetic j)::prems))
           (Top.TagSet.empty, []) ts in
-      [(params, u, prems, Any)]
+      [(params, u, prems, Any, (fun _subproofs _terms -> PROOFS.pr_var (-1)))]
 
   and focus_right u p : (Top.TagSet.t * Top.TagSet.t * sequent list * proof_builder) list =
     let _ = debug ("focus_right: "^ (Pp.string_of_pprop G.lookup_sym p)) in
@@ -165,7 +171,7 @@ module Make (G:Globals.T)(TMS:Tm.S)(PROPS:Prop.S)(PROOFS:Proof.S)(RULES:Rule.S) 
       let (params, prems) = List.fold_left
           (fun (params, prems) (p, j) -> (Top.TagSet.union params p, (synthetic j)::prems))
           (Top.TagSet.empty, []) ts in
-      [(params, u, prems)]
+      [(params, u, prems, (fun _subproofs _terms -> PROOFS.pr_var (-1)))]
 
   (** Add synthetic rules for n to rules, return the synthetic connective *)
   and mk_synthetic_rule_of_nprop (u : Top.TagSet.t) (n : nprop) : atomic_prop =
