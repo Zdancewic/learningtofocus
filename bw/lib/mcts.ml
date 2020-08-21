@@ -26,8 +26,10 @@ module type Strategy = sig
 
 end
 
-module RuleStrategy (RULES:Rule.S) : Strategy = struct
+module RuleStrategy (RULES:Rule.S) (SYNTHF : Synthetics.S) : Strategy = struct
+  module SYNTH = SYNTHF (RULES)
   open RULES
+  open SYNTH
 
   type state = sequent list
 
@@ -77,15 +79,19 @@ module RuleStrategy (RULES:Rule.S) : Strategy = struct
           Some subgoals
       end
     in
-    List.fold_right (fun rule states ->
+    List.fold_right (fun (rule : RULES.t) states ->
         match rule_applies rule with
         | None -> states
-        | Some new_state -> new_state :: states) [] rules
+        | Some new_state -> new_state :: states) (get_rules obligation) []
 
   let expand_child : state -> state list = function
     | [] -> []
     | obligation :: rest ->
       List.map (fun (obligations : state) -> List.append obligations rest) (step obligation)
+
+  (** Run a playout from the given state *)
+  let simulate (_ : state) : result = initial_result
+
 end
 
 module Make (STRATEGY:Strategy) = struct
