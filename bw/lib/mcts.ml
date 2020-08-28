@@ -26,8 +26,7 @@ module type Strategy = sig
 
 end
 
-module RuleStrategy (RULES:Rule.S) (SYNTHF : Synthetics.S) : Strategy = struct
-  module SYNTH = SYNTHF (RULES)
+module RuleStrategy (RULES:Rule.S) (SYNTH : Synthetics.S with type rule := RULES.t and type sequent := RULES.sequent) : Strategy = struct
   open RULES
   open SYNTH
 

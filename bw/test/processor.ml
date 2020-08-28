@@ -8,9 +8,8 @@ module Make(G : Globals.T) = struct
   module PROPS = Prop.Make(G)(TMS);;
   module TRANS = Translate.Make(G)(TMS)(PROPS);;
   module RULES = Rule.Make(G)(TMS);;
-  module SYNTHF = Synthetics.Make(G)(TMS)(PROPS);;
-  module SYNTH = SYNTHF(RULES);;
-  module PROVER = Prover.Make(G)(TMS)(PROPS)(RULES)(SYNTHF);;
+  module SYNTH = Synthetics.Make(G)(TMS)(PROPS)(RULES);;
+  module PROVER = Prover.Make(G)(TMS)(PROPS)(RULES)(SYNTH);;
 
   let ast_from_lexbuf filename buf =
     try
@@ -27,7 +26,8 @@ module Make(G : Globals.T) = struct
         | Ast.Conjecture ->
           let q = TRANS.prop_to_nprop [] p in
 	        let (params, goals) = SYNTH.make_synthetics (!axioms) q in
-          let success = PROVER.search_goals params goals in
+          let heuristic _ = 0 in
+          let success = PROVER.search_goals heuristic params goals in
           success
         | Ast.Axiom ->
 	        let q = TRANS.prop_to_pprop [] p in

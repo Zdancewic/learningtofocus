@@ -1,37 +1,31 @@
-module type S = functor (RULES : Rule.S) (SYNTHF : Synthetics.S) -> sig
+module type S = functor (RULES : Rule.S) (SYNTH : Synthetics.S with type rule := RULES.t and type sequent := RULES.sequent) -> sig
   type search_result = {
     unifs : RULES.tm_unification Seq.t;
     more  : bool
   }
 
-  val solve_sequent_limit : int -> RULES.sequent -> search_result
-  val solve_sequent : RULES.sequent -> bool
-  val search_goals : Top.TagSet.t -> RULES.sequent list -> bool
+  val debug_flag : bool ref
+  val solve_sequent_limit : int -> (RULES.sequent list -> int) -> RULES.sequent -> search_result
+  val solve_sequent : (RULES.sequent list -> int) -> RULES.sequent -> bool
+  val search_goals : (RULES.sequent list -> int) ->Top.TagSet.t -> RULES.sequent list -> bool
 end
-module Make (G:Globals.T)(TMS:Tm.S)(PROPS:Prop.S)(RULES:Rule.S)(SYNTHF:Synthetics.S) = struct
-  module SYNTH = SYNTHF (RULES)
+module Make (G:Globals.T)(TMS:Tm.S)(PROPS:Prop.S) : S =
+  functor (RULES : Rule.S) (SYNTH : Synthetics.S with type rule := RULES.t and type sequent := RULES.sequent) ->
+  struct
 
-  type rule_t = (int, RULES.t) Hashtbl.t
-  let rules : rule_t = Hashtbl.create 251
 
   let debug_flag = ref false
-  let backtrack_flag = ref false
-
-  let backtrack s n =
-    if !backtrack_flag && n > 0 then
-      Printf.printf "%s (depth %d)\n" s n
-    else ()
 
   let debug s =
     if !debug_flag then
       print_endline s
     else ()
 
-  let debug_breakpt () =
-    if !debug_flag then
-      let _ = Printf.printf "[Continue]\n"; read_line () in
-      ()
-    else ()
+  (* let debug_breakpt () =
+   *   if !debug_flag then
+   *     let _ = Printf.printf "[Continue]\n"; read_line () in
+   *     ()
+   *   else () *)
 
 
 
@@ -39,11 +33,6 @@ module Make (G:Globals.T)(TMS:Tm.S)(PROPS:Prop.S)(RULES:Rule.S)(SYNTHF:Synthetic
     unifs : RULES.tm_unification Seq.t;
     more  : bool
   }
-
-  let seq_is_empty seq =
-    match seq with
-    | Seq.Nil -> true
-    | _ -> false
 
   let rec seq_append (seq1 : 'a Seq.t) (seq2 : 'a Seq.t) () : 'a Seq.node =
     match seq1 () with
@@ -82,35 +71,35 @@ module Make (G:Globals.T)(TMS:Tm.S)(PROPS:Prop.S)(RULES:Rule.S)(SYNTHF:Synthetic
           { unifs = Seq.empty; more = res.more } res.unifs
 
 
+  type state_cache = { score : int; state : RULES.sequent list }
+
   (* Old behavior: Succeeds if f succeeds on anything in list. Fails if f fails
      on everything in list (or list is empty). *)
   (** Return concatenated lazy list of all of the results from calling f on *some*
       element of list. *)
-  let results_exists (f : RULES.t -> search_result) (list : RULES.t list) : search_result =
+  let results_exists (search : RULES.sequent list -> search_result) (obligation : RULES.sequent) (heuristic : RULES.sequent list -> int) (list : RULES.t list) : search_result =
+    let step rule =
+      match RULES.apply rule obligation with
+      | None -> None
+      | Some (subgoals, _) ->
+        Some { score = heuristic subgoals; state = subgoals }
+    in
+    let next_states = List.sort (fun a b -> compare a.score b.score) (List.filter_map step list) in
     List.fold_left (fun prev_result x ->
-      result_append prev_result (f x))
-      result_empty list
+      result_append prev_result (search x.state))
+      result_empty next_states
 
 
   (** Search rules to find a derivation of a given goal that is no more than max_depth rules deep. *)
-  let rec solve_sequent_limit (max_depth : int) (obligation : RULES.sequent) : search_result =
+  let rec solve_sequent_limit (max_depth : int) (heuristic : RULES.sequent list -> int) (obligation : RULES.sequent) : search_result =
     debug (Printf.sprintf "Solving %s at max_depth %d\n"
              (Pp.string_of_x (fun fmt -> (RULES.pp_sequent G.lookup_sym fmt)) obligation)
              max_depth);
     if max_depth < 1 then
       { unifs = Seq.empty; more = true }
     else
-      (* Apply a given rule and, if possible, continue the proof at the next level of depth. *)
-      let rule_applies rule =
-        begin match RULES.apply rule obligation with
-          | None -> { unifs = Seq.empty; more = false }
-          | Some (subgoals, _(* unif *)) ->
-            debug (Printf.sprintf "apply %s\n" (Pp.string_of_x (RULES.pp_rule G.lookup_sym) rule));
-            (* TODO combine unif with the unifications in the result *)
-            results_for_all (solve_sequent_limit (max_depth - 1)) subgoals
-        end in
       let some_rule_applies rules =
-        results_exists rule_applies rules in
+        results_exists (results_for_all (solve_sequent_limit (max_depth - 1) heuristic)) obligation heuristic rules in
 
       (* Right focus on atomic prop: does ID rule apply? *)
       let immediate =
@@ -128,7 +117,7 @@ module Make (G:Globals.T)(TMS:Tm.S)(PROPS:Prop.S)(RULES:Rule.S)(SYNTHF:Synthetic
 
 
   (** Search rules to solve a given goal *)
-  let solve_sequent (obligation : RULES.sequent) : bool =
+  let solve_sequent (heuristic : RULES.sequent list -> int) (obligation : RULES.sequent) : bool =
     let rec helper max_depth (acc : search_result) =
       let is_empty =
         match acc.unifs () with
@@ -137,7 +126,7 @@ module Make (G:Globals.T)(TMS:Tm.S)(PROPS:Prop.S)(RULES:Rule.S)(SYNTHF:Synthetic
       in
       if is_empty then
         (if acc.more then
-          let search = solve_sequent_limit max_depth obligation in
+          let search = solve_sequent_limit max_depth heuristic obligation in
           helper (max_depth + 1) search
         else false)
       else
@@ -147,6 +136,6 @@ module Make (G:Globals.T)(TMS:Tm.S)(PROPS:Prop.S)(RULES:Rule.S)(SYNTHF:Synthetic
 
   (** Iterate through each proof obligation and check whether it unifies with a hypothesis
       or the conclusion of any rule *)
-  let search_goals _ : RULES.sequent list -> bool =
-    List.for_all solve_sequent
+  let search_goals (heuristic : RULES.sequent list -> int) _ : RULES.sequent list -> bool =
+    List.for_all (solve_sequent heuristic)
 end

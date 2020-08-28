@@ -32,9 +32,8 @@ module TMS = Tm.Make(G);;
 module PROPS = Prop.Make(G)(TMS);;
 module TRANS = Translate.Make(G)(TMS)(PROPS);;
 module RULES = Rule.Make(G)(TMS);;
-module SYNTHF = Synthetics.Make(G)(TMS)(PROPS);;
-module SYNTH = SYNTHF(RULES);;
-module PROVER = Prover.Make(G)(TMS)(PROPS)(RULES)(SYNTHF);;
+module SYNTH = Synthetics.Make(G)(TMS)(PROPS)(RULES);;
+module PROVER = Prover.Make(G)(TMS)(PROPS)(RULES)(SYNTH);;
 
 let ast_from_lexbuf filename buf =
   try
@@ -67,10 +66,11 @@ let process_input i =
 
 	        let (params, goals) = SYNTH.make_synthetics (!ctxt) q in
 
-	        let _ = Hashtbl.iter (fun i r -> Printf.printf "RULE(S:%d)\n%s\n" i (Pp.string_of_x (RULES.pp_rule G.lookup_sym) r)) PROVER.rules in
+	        let _ = Hashtbl.iter (fun i r -> Printf.printf "RULE(S:%d)\n%s\n" i (Pp.string_of_x (RULES.pp_rule G.lookup_sym) r)) SYNTH.rules in
 	        let _ = Printf.printf "Goals:\n" in
 	        let _ = Printf.printf "%s\n" (Pp.string_of_x (fun fmt -> Pp.pp_list_aux fmt "\n" (RULES.pp_sequent G.lookup_sym fmt)) goals) in
-          let success = PROVER.search_goals params goals in
+          let heuristic _ = 0 in
+          let success = PROVER.search_goals heuristic params goals in
           if success then
             Printf.printf "PROOF SEARCH SUCCEEDED\n"
           else
