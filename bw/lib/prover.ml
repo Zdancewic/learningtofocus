@@ -85,11 +85,11 @@ module Make (G:Globals.T)(TMS:Tm.S)(PROPS:Prop.S)(RULES : Rule.S)
 
   type state_cache = { score : int; state : RULES.sequent list }
 
-  (* Old behavior: Succeeds if f succeeds on anything in list. Fails if f fails
-     on everything in list (or list is empty). *)
   (** Return concatenated lazy list of all of the results from calling f on *some*
-      element of list. *)
-  let results_exists (search : RULES.sequent list -> search_result) (obligation : RULES.sequent) (heuristic : RULES.sequent list -> int) (list : RULES.t list) : search_result =
+      element of list.
+  *)
+  let results_exists (search : RULES.sequent list -> search_result) (obligation : RULES.sequent)
+      (heuristic : RULES.sequent list -> int) (list : RULES.t list) : search_result =
     let step rule =
       match RULES.apply rule obligation with
       | None -> None

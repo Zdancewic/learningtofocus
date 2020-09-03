@@ -34,6 +34,7 @@ module TRANS = Translate.Make(G)(TMS)(PROPS);;
 module RULES = Rule.Make(G)(TMS);;
 module SYNTH = Synthetics.Make(G)(TMS)(PROPS)(RULES);;
 module PROVER = Prover.Make(G)(TMS)(PROPS)(RULES)(SYNTH);;
+module STRATEGY = Mcts.RuleStrategy(RULES)(SYNTH)(PROVER);;
 
 let ast_from_lexbuf filename buf =
   try

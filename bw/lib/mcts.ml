@@ -28,7 +28,7 @@ end
 
 module RuleStrategy (RULES:Rule.S)
     (SYNTH : Synthetics.S with type rule := RULES.t and type sequent := RULES.sequent)
-    (PROVER : Prover.S with type sequent := RULES.sequent) : Strategy = struct
+    (PROVER : Prover.S with type sequent := RULES.sequent and type tm_unification := RULES.tm_unification) : Strategy = struct
 
   open RULES
   open SYNTH
