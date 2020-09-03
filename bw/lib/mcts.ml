@@ -26,7 +26,10 @@ module type Strategy = sig
 
 end
 
-module RuleStrategy (RULES:Rule.S) (SYNTH : Synthetics.S with type rule := RULES.t and type sequent := RULES.sequent) : Strategy = struct
+module RuleStrategy (RULES:Rule.S)
+    (SYNTH : Synthetics.S with type rule := RULES.t and type sequent := RULES.sequent)
+    (PROVER : Prover.S with type sequent := RULES.sequent) : Strategy = struct
+
   open RULES
   open SYNTH
 
@@ -88,9 +91,11 @@ module RuleStrategy (RULES:Rule.S) (SYNTH : Synthetics.S with type rule := RULES
     | obligation :: rest ->
       List.map (fun (obligations : state) -> List.append obligations rest) (step obligation)
 
-  (** Run a playout from the given state *)
-  let simulate (_ : state) : result = initial_result
-
+  (** TODO Run a playout from the given state *)
+  let simulate (obligations : state) : result =
+    let result = PROVER.solve_sequents_limit 10 List.length obligations in
+    let wins = if result then 1 else 0 in
+    { games = 1; wins }
 end
 
 module Make (STRATEGY:Strategy) = struct

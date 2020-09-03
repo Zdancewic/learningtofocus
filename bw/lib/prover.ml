@@ -1,16 +1,23 @@
-module type S = functor (RULES : Rule.S) (SYNTH : Synthetics.S with type rule := RULES.t and type sequent := RULES.sequent) -> sig
+module type S = sig
+  type sequent
+  type tm_unification
+
+
   type search_result = {
-    unifs : RULES.tm_unification Seq.t;
+    unifs : tm_unification Seq.t;
     more  : bool
   }
 
+  val is_success : search_result -> bool
   val debug_flag : bool ref
-  val solve_sequent_limit : int -> (RULES.sequent list -> int) -> RULES.sequent -> search_result
-  val solve_sequent : (RULES.sequent list -> int) -> RULES.sequent -> bool
-  val search_goals : (RULES.sequent list -> int) ->Top.TagSet.t -> RULES.sequent list -> bool
+  val solve_sequent_limit : int -> (sequent list -> int) -> sequent -> search_result
+  val solve_sequents_limit : int -> (sequent list -> int) -> sequent list -> bool
+  val solve_sequent : (sequent list -> int) -> sequent -> bool
+  val search_goals : (sequent list -> int) -> Top.TagSet.t -> sequent list -> bool
 end
-module Make (G:Globals.T)(TMS:Tm.S)(PROPS:Prop.S) : S =
-  functor (RULES : Rule.S) (SYNTH : Synthetics.S with type rule := RULES.t and type sequent := RULES.sequent) ->
+module Make (G:Globals.T)(TMS:Tm.S)(PROPS:Prop.S)(RULES : Rule.S)
+    (SYNTH : Synthetics.S with type rule := RULES.t and type sequent := RULES.sequent)
+  : (S with type tm_unification := RULES.tm_unification and type sequent := RULES.sequent) =
   struct
 
 
@@ -33,6 +40,11 @@ module Make (G:Globals.T)(TMS:Tm.S)(PROPS:Prop.S) : S =
     unifs : RULES.tm_unification Seq.t;
     more  : bool
   }
+
+  let is_success (result : search_result) : bool =
+    match result.unifs () with
+    | Seq.Nil -> false
+    | _ -> true
 
   let rec seq_append (seq1 : 'a Seq.t) (seq2 : 'a Seq.t) () : 'a Seq.node =
     match seq1 () with
@@ -115,16 +127,13 @@ module Make (G:Globals.T)(TMS:Tm.S)(PROPS:Prop.S) : S =
       let nonimmediate = some_rule_applies (SYNTH.get_rules obligation) in
       result_append immediate nonimmediate
 
+  let solve_sequents_limit (max_depth : int) (heuristic : RULES.sequent list -> int) : RULES.sequent list -> bool =
+    List.for_all (fun obligation -> is_success (solve_sequent_limit max_depth heuristic obligation))
 
   (** Search rules to solve a given goal *)
   let solve_sequent (heuristic : RULES.sequent list -> int) (obligation : RULES.sequent) : bool =
     let rec helper max_depth (acc : search_result) =
-      let is_empty =
-        match acc.unifs () with
-        | Seq.Nil -> true
-        | _ -> false
-      in
-      if is_empty then
+      if not (is_success acc) then
         (if acc.more then
           let search = solve_sequent_limit max_depth heuristic obligation in
           helper (max_depth + 1) search
@@ -138,4 +147,5 @@ module Make (G:Globals.T)(TMS:Tm.S)(PROPS:Prop.S) : S =
       or the conclusion of any rule *)
   let search_goals (heuristic : RULES.sequent list -> int) _ : RULES.sequent list -> bool =
     List.for_all (solve_sequent heuristic)
+
 end
