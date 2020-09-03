@@ -19,23 +19,25 @@ module type Strategy = sig
   (** Run a playout from the given state *)
   val simulate : state -> result
 
-
   (* Monoidal operators on result type *)
   val initial_result : result
   val append_result : result -> result -> result
 
 end
 
+type rule_strategy_result = { games : int; wins : int }
+
 module RuleStrategy (RULES:Rule.S)
     (SYNTH : Synthetics.S with type rule := RULES.t and type sequent := RULES.sequent)
-    (PROVER : Prover.S with type sequent := RULES.sequent and type tm_unification := RULES.tm_unification) : Strategy = struct
+    (PROVER : Prover.S with type sequent := RULES.sequent and type tm_unification := RULES.tm_unification)
+  : (Strategy with type result = rule_strategy_result and type state = RULES.sequent list) = struct
 
   open RULES
   open SYNTH
 
+  type result = rule_strategy_result
   type state = sequent list
 
-  type result = { games : int; wins : int }
   let initial_result = { games = 0; wins = 0 }
   let append_result r1 r2 = { games = r1.games + r2.games; wins = r1.games + r2.games }
 
@@ -101,6 +103,13 @@ end
 module Make (STRATEGY:Strategy) = struct
   open STRATEGY
 
+  let init_tree (state : STRATEGY.state) : mctree = {
+    state;
+    result = STRATEGY.initial_result;
+    expanded = false;
+    children = [];
+  }
+
   let select (tree : mctree) : mctree list =
     let rec sel tree path =
       if tree.expanded then
@@ -144,4 +153,12 @@ module Make (STRATEGY:Strategy) = struct
       child.result <- simulate child.state;
       backprop path
     | [] -> failwith "selection failed"
+
+  (** Run n rounds of MCTS starting from the initial state *)
+  let search_rounds (n : int) (init_state : STRATEGY.state) : STRATEGY.result =
+    let root = init_tree init_state in
+    for _ = 1 to n do
+      search_round root
+    done;
+    root.result
 end
