@@ -144,14 +144,21 @@ module Make (STRATEGY:Strategy) = struct
   (** Run one round of MCTS, mutating the values in the tree. *)
   let search_round (tree : mctree) : unit =
     (* Choose element of list at random *)
-    let pick l = List.nth l (Random.int (List.length l)) in
+    let pick l =
+      let len = List.length l in
+      let idx = Random.int len in
+      List.nth l idx in
     let path = select tree in
     match path with
     | leaf :: _ ->
       expand leaf;
-      let child = pick leaf.children in
-      child.result <- simulate child.state;
-      backprop path
+      begin match leaf.children with
+      | _ :: _ ->
+        let child = pick leaf.children in
+        child.result <- simulate child.state;
+        backprop path
+      | [] -> ()
+      end
     | [] -> failwith "selection failed"
 
   (** Run n rounds of MCTS starting from the initial state *)

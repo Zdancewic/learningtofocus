@@ -10,6 +10,8 @@ module Make(G : Globals.T) = struct
   module RULES = Rule.Make(G)(TMS);;
   module SYNTH = Synthetics.Make(G)(TMS)(PROPS)(RULES);;
   module PROVER = Prover.Make(G)(TMS)(PROPS)(RULES)(SYNTH);;
+  module STRATEGY = Mcts.RuleStrategy(RULES)(SYNTH)(PROVER);;
+  module MCTS = Mcts.Make(STRATEGY);;
 
   let ast_from_lexbuf filename buf =
     try
@@ -26,7 +28,10 @@ module Make(G : Globals.T) = struct
         | Ast.Conjecture ->
           let q = TRANS.prop_to_nprop [] p in
 	        let (params, goals) = SYNTH.make_synthetics (!axioms) q in
-          let heuristic _ = 0 in
+          let heuristic state =
+            let result = (MCTS.search_rounds 10 state) in
+            -result.wins
+          in
           let success = PROVER.search_goals heuristic params goals in
           success
         | Ast.Axiom ->
