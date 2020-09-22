@@ -11,7 +11,7 @@ module type Strategy = sig
   }
 
   (** Pick a child of the given node to move to during the selection phase *)
-  val select_child : mctree -> mctree
+  val select_child : mctree -> mctree option
 
   (** Expand that child! *)
   val expand_child : state -> state list
@@ -55,7 +55,7 @@ module RuleStrategy (RULES:Rule.S)
     let exploration = explore_bias *. sqrt ((log (float_of_int parent_games)) /. (float_of_int games)) in
     exploitation +. exploration
 
-  let select_child (tree : mctree) : mctree =
+  let select_child (tree : mctree) : mctree option =
     let parent_games = tree.result.games in
 
     (* Find the child of tree with the highest UCB1 value *)
@@ -70,10 +70,7 @@ module RuleStrategy (RULES:Rule.S)
               Some (max_ucb, best_child)
           | None -> Some (child_ucb, child)
         end) None tree.children in
-
-    match best_child_opt with
-    | Some (_, next_child) -> next_child
-    | None -> tree (* tree has no children *)
+    Option.map snd best_child_opt
 
   let step (obligation : sequent) : state list =
     let rule_applies rule : state option =
@@ -113,8 +110,9 @@ module Make (STRATEGY:Strategy) = struct
   let select (tree : mctree) : mctree list =
     let rec sel tree path =
       if tree.expanded then
-        let next = select_child tree in
-        sel next (tree :: path)
+        match select_child tree with
+        | Some next -> sel next (tree :: path)
+        | None -> tree :: path
       else
         tree :: path
     in
@@ -151,13 +149,16 @@ module Make (STRATEGY:Strategy) = struct
     let path = select tree in
     match path with
     | leaf :: _ ->
-      expand leaf;
-      begin match leaf.children with
-      | _ :: _ ->
-        let child = pick leaf.children in
-        child.result <- simulate child.state;
-        backprop path
-      | [] -> ()
+      begin if not leaf.expanded then
+          expand leaf;
+          begin match leaf.children with
+            | _ :: _ ->
+              let child = pick leaf.children in
+              child.result <- simulate child.state;
+              let r = backprop path in
+              r
+            | [] -> ()
+          end
       end
     | [] -> failwith "selection failed"
 

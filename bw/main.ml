@@ -33,7 +33,8 @@ module PROPS = Prop.Make(G)(TMS);;
 module TRANS = Translate.Make(G)(TMS)(PROPS);;
 module RULES = Rule.Make(G)(TMS);;
 module SYNTH = Synthetics.Make(G)(TMS)(PROPS)(RULES);;
-module PROVER = Prover.Make(G)(TMS)(PROPS)(RULES)(SYNTH);;
+module SEARCH = Search.Make(RULES)
+module PROVER = Prover.Make(G)(TMS)(PROPS)(RULES)(SYNTH)(SEARCH);;
 module STRATEGY = Mcts.RuleStrategy(RULES)(SYNTH)(PROVER);;
 module MCTS = Mcts.Make(STRATEGY);;
 
@@ -72,7 +73,8 @@ let process_input i =
 	        let _ = Printf.printf "Goals:\n" in
 	        let _ = Printf.printf "%s\n" (Pp.string_of_x (fun fmt -> Pp.pp_list_aux fmt "\n" (RULES.pp_sequent G.lookup_sym fmt)) goals) in
           let heuristic state =
-            let result = (MCTS.search_rounds 10 state) in
+            Printf.printf "heuristic called \n";
+            let result = (MCTS.search_rounds 1 state) in
             -result.wins
           in
           let success = PROVER.search_goals heuristic params goals in

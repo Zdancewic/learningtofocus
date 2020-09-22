@@ -9,7 +9,8 @@ module Make(G : Globals.T) = struct
   module TRANS = Translate.Make(G)(TMS)(PROPS);;
   module RULES = Rule.Make(G)(TMS);;
   module SYNTH = Synthetics.Make(G)(TMS)(PROPS)(RULES);;
-  module PROVER = Prover.Make(G)(TMS)(PROPS)(RULES)(SYNTH);;
+  module SEARCH = Search.Make(RULES)
+  module PROVER = Prover.Make(G)(TMS)(PROPS)(RULES)(SYNTH)(SEARCH);;
   module STRATEGY = Mcts.RuleStrategy(RULES)(SYNTH)(PROVER);;
   module MCTS = Mcts.Make(STRATEGY);;
 

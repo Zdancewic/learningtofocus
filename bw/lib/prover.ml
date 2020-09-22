@@ -3,23 +3,19 @@ module type S = sig
   type tm_unification
 
 
-  type search_result = {
-    unifs : tm_unification Seq.t;
-    more  : bool
-  }
-
-  val is_success : search_result -> bool
   val debug_flag : bool ref
-  val solve_sequent_limit : int -> (sequent list -> int) -> sequent -> search_result
+  (* val solve_sequent_limit : int -> (sequent list -> int) -> sequent -> search_result *)
   val solve_sequents_limit : int -> (sequent list -> int) -> sequent list -> bool
   val solve_sequent : (sequent list -> int) -> sequent -> bool
   val search_goals : (sequent list -> int) -> Top.TagSet.t -> sequent list -> bool
 end
 module Make (G:Globals.T)(TMS:Tm.S)(PROPS:Prop.S)(RULES : Rule.S)
     (SYNTH : Synthetics.S with type rule := RULES.t and type sequent := RULES.sequent)
+    (SEARCH : Search.S with type solution := RULES.tm_unification)
   : (S with type tm_unification := RULES.tm_unification and type sequent := RULES.sequent) =
   struct
 
+  type search_result = SEARCH.t
 
   let debug_flag = ref false
 
@@ -28,36 +24,10 @@ module Make (G:Globals.T)(TMS:Tm.S)(PROPS:Prop.S)(RULES : Rule.S)
       print_endline s
     else ()
 
-  (* let debug_breakpt () =
-   *   if !debug_flag then
-   *     let _ = Printf.printf "[Continue]\n"; read_line () in
-   *     ()
-   *   else () *)
-
-
-
-  type search_result = {
-    unifs : RULES.tm_unification Seq.t;
-    more  : bool
-  }
-
-  let is_success (result : search_result) : bool =
-    match result.unifs () with
-    | Seq.Nil -> false
-    | _ -> true
-
-  let rec seq_append (seq1 : 'a Seq.t) (seq2 : 'a Seq.t) () : 'a Seq.node =
-    match seq1 () with
-    | Seq.Nil -> seq2 ()
-    | Seq.Cons (x, xs) -> Seq.Cons (x, (seq_append xs seq2))
-
-  let result_append { unifs = unifs1; more = more1 } { unifs = unifs2; more = more2 } =
-    { unifs = seq_append unifs1 unifs2; more = more1 || more2 }
-
-  let result_empty : search_result = { unifs = Seq.empty; more = false }
-  let result_trivial : search_result = { unifs = Seq.return RULES.unif_empty; more = false }
-  let result_cons (unif : RULES.tm_unification) (result : search_result) =
-    { unifs = (fun () -> Seq.Cons (unif, result.unifs)); more = result.more }
+  let rec fold_right_lazy (f : 'a -> (unit -> 'acc) -> 'acc) (list : 'a list) (init : 'acc) : 'acc =
+    match list with
+    | [] -> init
+    | x::xs -> f x (fun () -> fold_right_lazy f xs init)
 
   (** Apply a given unification to all rules in a list *)
   let apply_unif_sequents (unif : RULES.tm_unification) rules : RULES.sequent list =
@@ -69,46 +39,51 @@ module Make (G:Globals.T)(TMS:Tm.S)(PROPS:Prop.S)(RULES : Rule.S)
       element of the list.
 
       Empty sequence indicates there is no suitable unification. *)
-  let rec results_for_all (solve_sequent : RULES.sequent -> search_result)
-                          (list : RULES.sequent list) : search_result =
+  let rec results_for_all (solve_sequent : RULES.sequent -> unit -> search_result)
+                          (list : RULES.sequent list) : unit -> search_result =
+    fun () ->
       match list with
-      | [] -> result_trivial
+      | [] -> SEARCH.trivial
       | x :: xs ->
-        let res = solve_sequent x in
-        Seq.fold_left (fun prev_result (unif : RULES.tm_unification) ->
-            let rest_result = results_for_all solve_sequent (apply_unif_sequents unif xs) in
-            let new_unifs = (Seq.filter_map (RULES.unif_combine unif) rest_result.unifs) in
-            let new_result = { unifs = new_unifs; more = rest_result.more } in
-            result_append prev_result new_result)
-          { unifs = Seq.empty; more = res.more } res.unifs
+        let res = solve_sequent x () in
+        let proc (unif : RULES.tm_unification) (prev_result : unit -> search_result) =
+          let rest_result = results_for_all solve_sequent (apply_unif_sequents unif xs) in
+          (* the filter_map should not actually filter anything out since we know unif is independent from the solutions in rest_result *)
+          let new_result : unit -> search_result = SEARCH.filter_map (RULES.unif_combine unif) rest_result in
+          SEARCH.append new_result prev_result ()
+        in
+        SEARCH.fold_right proc res SEARCH.empty
 
 
   type state_cache = { score : int; state : RULES.sequent list }
 
-  (** Return concatenated lazy list of all of the results from calling f on *some*
-      element of list.
+
+
+  (** Return concatenated lazy list of all of the results from calling search on *some*
+      element of rules.
   *)
-  let results_exists (search : RULES.sequent list -> search_result) (obligation : RULES.sequent)
-      (heuristic : RULES.sequent list -> int) (list : RULES.t list) : search_result =
+  let results_exists (search : RULES.sequent list -> unit -> search_result) (obligation : RULES.sequent)
+      (heuristic : RULES.sequent list -> int) (rules : RULES.t list) : search_result =
     let step rule =
       match RULES.apply rule obligation with
       | None -> None
       | Some (subgoals, _) ->
-        Some { score = heuristic subgoals; state = subgoals }
+        let score = heuristic subgoals in
+        Some { score; state = subgoals }
     in
-    let next_states = List.sort (fun a b -> compare a.score b.score) (List.filter_map step list) in
-    List.fold_left (fun prev_result x ->
-      result_append prev_result (search x.state))
-      result_empty next_states
+    let next_states = List.sort (fun a b -> compare a.score b.score) (List.filter_map step rules) in
+    (* TODO did we get laziness right here? *)
+     fold_right_lazy (fun x prev_result ->
+        SEARCH.append (search x.state) prev_result ())
+       next_states (SEARCH.empty false)
 
 
   (** Search rules to find a derivation of a given goal that is no more than max_depth rules deep. *)
-  let rec solve_sequent_limit (max_depth : int) (heuristic : RULES.sequent list -> int) (obligation : RULES.sequent) : search_result =
-    debug (Printf.sprintf "Solving %s at max_depth %d\n"
-             (Pp.string_of_x (fun fmt -> (RULES.pp_sequent G.lookup_sym fmt)) obligation)
-             max_depth);
+  let rec solve_sequent_limit (max_depth : int) (heuristic : RULES.sequent list -> int) (obligation : RULES.sequent) : unit -> search_result =
+    let obligation_str = (Pp.string_of_x (fun fmt -> (RULES.pp_sequent G.lookup_sym fmt)) obligation) in
+    debug (Printf.sprintf "Solving %s at max_depth %d\n" obligation_str max_depth);
     if max_depth < 1 then
-      { unifs = Seq.empty; more = true }
+      fun () -> SEARCH.empty true
     else
       let some_rule_applies rules =
         results_exists (results_for_all (solve_sequent_limit (max_depth - 1) heuristic)) obligation heuristic rules in
@@ -117,31 +92,30 @@ module Make (G:Globals.T)(TMS:Tm.S)(PROPS:Prop.S)(RULES : Rule.S)
       let immediate =
         let (assumptions, goal) = obligation in
         List.fold_right (fun hyp res ->
-            let goal_unif = (RULES.unify_goal goal (Atomic hyp)) in
+            let goal_unif = RULES.unify_goal goal (Atomic hyp) in
             match goal_unif with
-              | None -> res
-              | Some unif -> result_cons unif.terms res)
-          assumptions result_empty
+            | None -> res
+            | Some unif -> SEARCH.cons unif.terms res)
+          assumptions (fun () -> SEARCH.empty false)
       in
-
-      let nonimmediate = some_rule_applies (SYNTH.get_rules obligation) in
-      result_append immediate nonimmediate
+      let nonimmediate () = some_rule_applies (SYNTH.get_rules obligation) in
+      SEARCH.append immediate nonimmediate
 
   let solve_sequents_limit (max_depth : int) (heuristic : RULES.sequent list -> int) : RULES.sequent list -> bool =
-    List.for_all (fun obligation -> is_success (solve_sequent_limit max_depth heuristic obligation))
+    List.for_all (fun obligation -> SEARCH.is_success (solve_sequent_limit max_depth heuristic obligation ()))
 
   (** Search rules to solve a given goal *)
   let solve_sequent (heuristic : RULES.sequent list -> int) (obligation : RULES.sequent) : bool =
     let rec helper max_depth (acc : search_result) =
-      if not (is_success acc) then
-        (if acc.more then
-          let search = solve_sequent_limit max_depth heuristic obligation in
+      if not (SEARCH.is_success acc) then
+        (if SEARCH.has_more acc then
+          let search = solve_sequent_limit max_depth heuristic obligation () in
           helper (max_depth + 1) search
         else false)
       else
         true
     in
-    helper 1 {unifs = Seq.empty; more = true}
+    helper 1 (SEARCH.empty true)
 
   (** Iterate through each proof obligation and check whether it unifies with a hypothesis
       or the conclusion of any rule *)
