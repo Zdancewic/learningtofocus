@@ -2,8 +2,6 @@ module type S = sig
   type sequent
   type tm_unification
 
-
-  val debug_flag : bool ref
   (* val solve_sequent_limit : int -> (sequent list -> int) -> sequent -> search_result *)
   val solve_sequents_limit : int -> (sequent list -> int) -> sequent list -> bool
   val solve_sequent : (sequent list -> int) -> sequent -> bool
@@ -17,16 +15,10 @@ module Make (G:Globals.T)(TMS:Tm.S)(PROPS:Prop.S)(RULES : Rule.S)
 
   type search_result = SEARCH.t
 
-  let debug_flag = ref false
 
-  let debug s =
-    if !debug_flag then
-      print_endline s
-    else ()
-
-  let rec fold_right_lazy (f : 'a -> (unit -> 'acc) -> 'acc) (list : 'a list) (init : 'acc) : 'acc =
+  let rec fold_right_lazy (f : 'a -> (unit -> 'acc) -> 'acc) (list : 'a list) (init : unit -> 'acc) : 'acc =
     match list with
-    | [] -> init
+    | [] -> init ()
     | x::xs -> f x (fun () -> fold_right_lazy f xs init)
 
   (** Apply a given unification to all rules in a list *)
@@ -63,7 +55,7 @@ module Make (G:Globals.T)(TMS:Tm.S)(PROPS:Prop.S)(RULES : Rule.S)
       element of rules.
   *)
   let results_exists (search : RULES.sequent list -> unit -> search_result) (obligation : RULES.sequent)
-      (heuristic : RULES.sequent list -> int) (rules : RULES.t list) : search_result =
+      (heuristic : RULES.sequent list -> int) (k : unit -> unit) (rules : RULES.t list) : search_result =
     let step rule =
       match RULES.apply rule obligation with
       | None -> None
@@ -75,31 +67,38 @@ module Make (G:Globals.T)(TMS:Tm.S)(PROPS:Prop.S)(RULES : Rule.S)
     (* TODO did we get laziness right here? *)
      fold_right_lazy (fun x prev_result ->
         SEARCH.append (search x.state) prev_result ())
-       next_states (SEARCH.empty false)
+       next_states (fun () -> k (); SEARCH.empty false)
 
 
   (** Search rules to find a derivation of a given goal that is no more than max_depth rules deep. *)
-  let rec solve_sequent_limit (max_depth : int) (heuristic : RULES.sequent list -> int) (obligation : RULES.sequent) : unit -> search_result =
+  let rec solve_sequent_limitk (max_depth : int) (heuristic : RULES.sequent list -> int) (k : unit -> unit) (obligation : RULES.sequent)
+    : unit -> search_result =
     let obligation_str = (Pp.string_of_x (fun fmt -> (RULES.pp_sequent G.lookup_sym fmt)) obligation) in
-    debug (Printf.sprintf "Solving %s at max_depth %d\n" obligation_str max_depth);
-    if max_depth < 1 then
-      fun () -> SEARCH.empty true
-    else
-      let some_rule_applies rules =
-        results_exists (results_for_all (solve_sequent_limit (max_depth - 1) heuristic)) obligation heuristic rules in
+    Debug.debug_start "Solving %s at max_depth %d%!" obligation_str max_depth;
+    let new_k () = Debug.debug_end (); k () in
+    begin if max_depth < 1 then
+          fun () -> new_k (); SEARCH.empty true
+      else
+        let some_rule_applies rules =
+          results_exists (results_for_all (solve_sequent_limit (max_depth - 1) heuristic)) obligation heuristic new_k rules in
 
-      (* Right focus on atomic prop: does ID rule apply? *)
-      let immediate =
-        let (assumptions, goal) = obligation in
-        List.fold_right (fun hyp res ->
-            let goal_unif = RULES.unify_goal goal (Atomic hyp) in
-            match goal_unif with
-            | None -> res
-            | Some unif -> SEARCH.cons unif.terms res)
-          assumptions (fun () -> SEARCH.empty false)
-      in
-      let nonimmediate () = some_rule_applies (SYNTH.get_rules obligation) in
-      SEARCH.append immediate nonimmediate
+        (* Right focus on atomic prop: does ID rule apply? *)
+            let immediate =
+              let (assumptions, goal) = obligation in
+              List.fold_right (fun hyp res ->
+              let goal_unif = RULES.unify_goal goal (Atomic hyp) in
+              match goal_unif with
+              | None -> res
+              | Some unif -> SEARCH.cons unif.terms res)
+            assumptions (fun () -> SEARCH.empty false)
+        in
+        let nonimmediate () =
+          some_rule_applies (SYNTH.get_rules obligation)
+        in
+        SEARCH.append immediate nonimmediate
+    end
+  and solve_sequent_limit (max_depth : int) (heuristic : RULES.sequent list -> int) (obligation : RULES.sequent) =
+    solve_sequent_limitk max_depth heuristic (fun _ -> ()) obligation
 
   let solve_sequents_limit (max_depth : int) (heuristic : RULES.sequent list -> int) : RULES.sequent list -> bool =
     List.for_all (fun obligation -> SEARCH.is_success (solve_sequent_limit max_depth heuristic obligation ()))
