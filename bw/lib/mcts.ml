@@ -90,9 +90,12 @@ module RuleStrategy (RULES:Rule.S)
     | obligation :: rest ->
       List.map (fun (obligations : state) -> List.append obligations rest) (step obligation)
 
+  (** Maximum proof tree depth a simulation explores to. *)
+  let simulation_depth = 3
+
   (** TODO Run a playout from the given state *)
   let simulate (obligations : state) : result =
-    let result = PROVER.solve_sequents_limit 10 List.length obligations in
+    let result = PROVER.solve_sequents_limit simulation_depth List.length obligations in
     let wins = if result then 1 else 0 in
     { games = 1; wins }
 end
