@@ -9,7 +9,7 @@ where C is either 'any' or q[t1...tm]
 *)
 open Format
 open Tm_rep
-open Proof_rep
+open Proof_rep.ProofRep
 open Util
 
 module type S = sig

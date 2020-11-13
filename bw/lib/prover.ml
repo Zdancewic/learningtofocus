@@ -117,15 +117,15 @@ module Make (G:Globals.T)(TMS:Tm.S)(PROPS:Prop.S)(PROOFS:Proof.S)(RULES:Rule.S) 
     | N_prop(_,_) ->
       [(Top.TagSet.empty, u, [],
 	      Atomic(synthetic_of_nprop n),
-        fun _subproofs _terms -> PROOFS.pr_var (-1))]   (* propositions are always considered rules, they have no subrules *)
+        fun _subproofs _terms -> PROOFS.pr_value_var (-1))]   (* propositions are always considered rules, they have no subrules *)
     | N_and(n1, n2) ->
       let prem1 = focus_left u n1 in
       let prem1_lifted = List.map (fun (x, y, z, w, builder) -> (x, y, z, w, fun proofs terms ->
-                         PROOFS.pr_n_projL (PROOFS.pr_var (-1)) (builder proofs terms)
+                         PROOFS.pr_stack_projL (PROOFS.pr_value_var (-1)) (builder proofs terms)
       )) prem1 in
       let prem2 = focus_left u n2 in
       let prem2_lifted = List.map (fun (x, y, z, w, builder) -> (x, y, z, w, fun proofs terms ->
-                         PROOFS.pr_n_projR (PROOFS.pr_var (-1)) (builder proofs terms)
+                         PROOFS.pr_stack_projR (PROOFS.pr_value_var (-1)) (builder proofs terms)
       )) prem2 in
       prem1_lifted @ prem2_lifted
     | N_imp(p1, n2) ->

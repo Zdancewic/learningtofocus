@@ -6,6 +6,9 @@ type prop = Pos of pprop | Neg of nprop
 
 type tag = Left | Right
 
+type 'a var =
+  | Free of 'a
+  | Bound of int
 
 (** Patterns *)
 type 'a ppat = 'a ppat_t Hashcons.hash_consed
@@ -13,7 +16,7 @@ and 'a ppat_t =
   | Pat_p_unit
   | Pat_p_inj of tag * 'a ppat
   | Pat_p_sigpair of 'a ppat
-  | Pat_p_var of 'a
+  | Pat_p_bvar of int
 
 (** Co-patterns *)
 type 'a npat = 'a npat_t Hashcons.hash_consed
@@ -40,17 +43,17 @@ end
 type 'a proof_inv = 'a proof_inv_t Hashcons.hash_consed
 and 'a proof_inv_t =
   | Pr_p_match  of ('a ppat -> 'a proof_inv) (* pattern match on the next variable *)
-  | Pr_n_match  of ('a npat -> 'a proof_inv) (* co-pattern matching i.e. lambda or matching on the current stack *)
+  | Pr_n_match  of ('a npat -> 'a proof_inv) (* co-pattern matching i.e. lambda i.e. matching on the current stack *)
   | Pr_p_rfoc   of 'a proof_value
-  | Pr_n_lfoc   of 'a   * 'a proof_stack
+  | Pr_n_lfoc   of 'a var * 'a proof_stack
 
 and 'a proof_value = 'a proof_value_t Hashcons.hash_consed
 and 'a proof_value_t =
-  | Pr_value of ('a -> 'a proof_inv) * tm list * 'a ppat
+  | Pr_value of ('a proof_inv) list * tm list * 'a ppat
 
 and 'a proof_stack = 'a proof_stack_t Hashcons.hash_consed
 and 'a proof_stack_t =
-  | Pr_stack of ('a -> 'a proof_inv) * tm list * 'a proof_inv option * 'a npat
+  | Pr_stack of ('a proof_inv) list * tm list * 'a proof_inv option * 'a npat
 
 
 module ProofRep = struct
