@@ -9,6 +9,7 @@ sig
 
   val open_tt_aux : int -> tm -> tm -> tm
   val open_tt  : tm -> tm -> tm
+  val mopen_tt : tm list -> tm -> tm
 
   val close_tt_aux : int -> Top.tag -> tm -> tm
   val close_tt : Top.tag -> tm -> tm
@@ -21,11 +22,17 @@ end
 
 module Make(G:Globals.T) : S = struct
   open Tm_rep
+
+  (** Bound variable (dB index) *)
   let tm_uvar i  = Globals.HTm.hashcons G.tm_table (Tm_uvar i)
+
+  (** Free variable *)
   let tm_param a = Globals.HTm.hashcons G.tm_table (Tm_param a)
+
+  (** Term-level uninterpreted function application *)
   let tm_fun f l = Globals.HTm.hashcons G.tm_table (Tm_fun (f, l))
 
-  (* open replaces a *bound* variable with a term *)
+  (** replace a *bound* variable (index i) with a term u in t *)
   let rec open_tt_aux i u t =
     match t.Hashcons.node with
     | Tm_uvar j -> if i = j then u else tm_uvar j
@@ -33,6 +40,17 @@ module Make(G:Globals.T) : S = struct
     | Tm_fun (f, ts) -> tm_fun f (List.map (open_tt_aux i u) ts)
 
   let open_tt = open_tt_aux 0
+
+  (** Replace bound variables whose index corresponds to a term in us *)
+  let rec mopen_tt us t =
+    match t.Hashcons.node with
+    | Tm_uvar j ->
+      begin match List.nth_opt us j with
+        | Some u -> u
+        | None -> t
+      end
+    | Tm_param _ -> t
+    | Tm_fun (f, ts) -> tm_fun f (List.map (mopen_tt us) ts)
 
   let rec close_tt_aux i x t =
     match t.Hashcons.node with
