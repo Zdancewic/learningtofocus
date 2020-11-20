@@ -32,8 +32,11 @@ module TMS = Tm.Make(G);;
 module PROPS = Prop.Make(G)(TMS);;
 module TRANS = Translate.Make(G)(TMS)(PROPS);;
 module RULES = Rule.Make(G)(TMS);;
-module PROVER = Prover.Make(G)(TMS)(PROPS)(RULES);;
-
+module SYNTH = Synthetics.Make(G)(TMS)(PROPS)(RULES);;
+module SEARCH = Search.Make(RULES)
+module PROVER = Prover.Make(G)(TMS)(PROPS)(RULES)(SYNTH)(SEARCH);;
+module STRATEGY = Mcts.RuleStrategy(RULES)(SYNTH)(PROVER);;
+module MCTS = Mcts.Make(STRATEGY);;
 
 let ast_from_lexbuf filename buf =
   try
@@ -52,37 +55,41 @@ let process_input i =
   | Ast.Fof(s, r, p) -> begin
       match r with
       | Ast.Conjecture -> (
-	  let q = TRANS.prop_to_nprop [] p in
-	  let _ = Printf.printf " Proving %s" s in
-	  let _ = if !Pp.verbose then Printf.printf ": %s\n" (Pp.string_of_nprop G.lookup_sym q) else
-	      Printf.printf "\n" in
+	        let q = TRANS.prop_to_nprop [] p in
+	        let _ = Printf.printf " Proving %s" s in
+	        let _ = if !Pp.verbose then Printf.printf ": %s\n" (Pp.string_of_nprop G.lookup_sym q) else
+	            Printf.printf "\n" in
 
-	  let _ = Printf.printf "Symbols:\n" in
-	  let _ = Hashtbl.iter (fun h -> fun (s,t) -> Printf.printf " S:%d = %s[%d]\n" h s t) G.sym_table in
-	  let _ = Printf.printf"NProp Table:\n" in
-	  let _ = Globals.NProp.iter (fun x -> Printf.printf " S:%d = %s\n" x.Hashcons.tag (Pp.string_of_nprop G.lookup_sym x)) G.nprop_table in
-	  let _ = Printf.printf"PProp Table:\n" in
-	  let _ = Globals.PProp.iter (fun x -> Printf.printf " S:%d = %s\n" x.Hashcons.tag (Pp.string_of_pprop G.lookup_sym x)) G.pprop_table in
+	        let _ = Printf.printf "Symbols:\n" in
+	        let _ = Hashtbl.iter (fun h -> fun (s,t) -> Printf.printf " S:%d = %s[%d]\n" h s t) G.sym_table in
+	        let _ = Printf.printf"NProp Table:\n" in
+	        let _ = Globals.NProp.iter (fun x -> Printf.printf " S:%d = %s\n" x.Hashcons.tag (Pp.string_of_nprop G.lookup_sym x)) G.nprop_table in
+	        let _ = Printf.printf"PProp Table:\n" in
+	        let _ = Globals.PProp.iter (fun x -> Printf.printf " S:%d = %s\n" x.Hashcons.tag (Pp.string_of_pprop G.lookup_sym x)) G.pprop_table in
 
-	  let (params, goals) = PROVER.make_synthetics (!ctxt) q in
+	        let (params, goals) = SYNTH.make_synthetics (!ctxt) q in
 
-	  let _ = Hashtbl.iter (fun i r -> Printf.printf "RULE(S:%d)\n%s\n" i (Pp.string_of_x (RULES.pp_rule G.lookup_sym) r)) PROVER.rules in
-	  let _ = Printf.printf "Goals:\n" in
-	  let _ = Printf.printf "%s\n" (Pp.string_of_x (fun fmt -> Pp.pp_list_aux fmt "\n" (RULES.pp_sequent G.lookup_sym fmt)) goals) in
-          let success = PROVER.search_goals params goals in
+	        let _ = Hashtbl.iter (fun i r -> Printf.printf "RULE(S:%d)\n%s\n" i (Pp.string_of_x (RULES.pp_rule G.lookup_sym) r)) SYNTH.rules in
+	        let _ = Printf.printf "Goals:\n" in
+	        let _ = Printf.printf "%s\n" (Pp.string_of_x (fun fmt -> Pp.pp_list_aux fmt "\n" (RULES.pp_sequent G.lookup_sym fmt)) goals) in
+          let heuristic state =
+            Debug.debug "heuristic called";
+            let result = (MCTS.search_rounds 1 state) in
+            -result.wins
+          in
+          let success = PROVER.search_goals heuristic params goals in
           if success then
-            Printf.printf "PROOF SEARCH SUCCEEDED\n"
+            Debug.debug "PROOF SEARCH SUCCEEDED\n"
           else
-            Printf.printf "PROOF SEARCH FAILED\n")
+            Debug.debug "PROOF SEARCH FAILED\n")
       | Ast.Axiom -> (
-	  let _ = if !Pp.verbose then Printf.printf "adding axiom: " in
-	  let q = TRANS.prop_to_pprop [] p in  (* positive proposition *)
-	  let _ = if !Pp.verbose then Printf.printf "%s\n" (Pp.string_of_pprop G.lookup_sym q) else () in
-   (*	  let l = G.gen_tag () in *)
-	  let g = !ctxt in
-	  ctxt := q::g
-
-	)
+         let _ = if !Pp.verbose then Printf.printf "adding axiom: " in
+	       let q = TRANS.prop_to_pprop [] p in  (* positive proposition *)
+	       let _ = if !Pp.verbose then Printf.printf "%s\n" (Pp.string_of_pprop G.lookup_sym q) else () in
+         (*	  let l = G.gen_tag () in *)
+	       let g = !ctxt in
+	       ctxt := q::g
+	     )
       | _ ->  Printf.printf "Role not supported\n";
         Printf.printf "Proposition %s : %s\n" s (Pp.string_of_nprop G.lookup_sym (TRANS.prop_to_nprop [] p))
     end
@@ -100,7 +107,7 @@ let do_file fn =
   close_in buffer
 
 let argspec = [
-  ("-debug", Arg.Set (PROVER.debug_flag), "turn on debugging");
+  ("-debug", Arg.Set (Debug.enabled), "turn on debugging");
   (* 	("-backtrack", Arg.Set (Prover.backtrack_flag), "show backtracking"); *)
   ("-print_depth", Arg.Int Format.set_max_boxes, "set print depth, default 10");
   ("-verbose", Arg.Set Pp.verbose, "turn on more output");

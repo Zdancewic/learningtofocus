@@ -8,7 +8,11 @@ module Make(G : Globals.T) = struct
   module PROPS = Prop.Make(G)(TMS);;
   module TRANS = Translate.Make(G)(TMS)(PROPS);;
   module RULES = Rule.Make(G)(TMS);;
-  module PROVER = Prover.Make(G)(TMS)(PROPS)(RULES);;
+  module SYNTH = Synthetics.Make(G)(TMS)(PROPS)(RULES);;
+  module SEARCH = Search.Make(RULES)
+  module PROVER = Prover.Make(G)(TMS)(PROPS)(RULES)(SYNTH)(SEARCH);;
+  module STRATEGY = Mcts.RuleStrategy(RULES)(SYNTH)(PROVER);;
+  module MCTS = Mcts.Make(STRATEGY);;
 
   let ast_from_lexbuf filename buf =
     try
@@ -24,8 +28,12 @@ module Make(G : Globals.T) = struct
       begin match role with
         | Ast.Conjecture ->
           let q = TRANS.prop_to_nprop [] p in
-	        let (params, goals) = PROVER.make_synthetics (!axioms) q in
-          let success = PROVER.search_goals params goals in
+	        let (params, goals) = SYNTH.make_synthetics (!axioms) q in
+          let heuristic state =
+            let result = (MCTS.search_rounds 10 state) in
+            -result.wins
+          in
+          let success = PROVER.search_goals heuristic params goals in
           success
         | Ast.Axiom ->
 	        let q = TRANS.prop_to_pprop [] p in
