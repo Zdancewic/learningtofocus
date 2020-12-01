@@ -6,6 +6,7 @@ open Range
 module Make(G : Globals.T) = struct
   module TMS = Tm.Make(G);;
   module PROPS = Prop.Make(G)(TMS);;
+  module PROOFS = Proof.Make(G)(TMS)(PROPS);;
   module TRANS = Translate.Make(G)(TMS)(PROPS);;
   module RULES = Rule.Make(G)(TMS);;
   module SYNTH = Synthetics.Make(G)(TMS)(PROPS)(RULES);;

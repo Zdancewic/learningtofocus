@@ -2,11 +2,26 @@ module G : Globals.T = struct
   type tm_t = Globals.HTm.t
   let tm_table = Globals.HTm.create 251    (* or, load from a file based on flags *)
 
+  type ppat_t = Globals.PPat.t
+  let ppat_table = Globals.PPat.create 251
+
+  type npat_t = Globals.NPat.t
+  let npat_table = Globals.NPat.create 251
+
   type pprop_t = Globals.PProp.t
   let pprop_table = Globals.PProp.create 251
 
   type nprop_t = Globals.NProp.t
   let nprop_table = Globals.NProp.create 251
+
+  type proof_t = Globals.HProof.t
+  let proof_table = Globals.HProof.create 251
+
+  type value_t = Globals.PValue.t
+  let value_table = Globals.PValue.create 251
+
+  type stack_t = Globals.NStack.t
+  let stack_table = Globals.NStack.create 251
 
   type sym_t = (int,string * int) Hashtbl.t
   let sym_table = (Hashtbl.create 251 : sym_t)
@@ -19,11 +34,11 @@ module G : Globals.T = struct
 
   let gen_tag =
     let c = ref 0 in
-    fun () -> let x = !c in incr c; x	
-  
+    fun () -> let x = !c in incr c; x
+
   let gen_sym (s:string) = 
     let h = Hashtbl.hash s in
-    try ignore (Hashtbl.find sym_table h); h 
+    try ignore (Hashtbl.find sym_table h); h
     with Not_found -> Hashtbl.add sym_table h (s,gen_tag()); h
 
 end 

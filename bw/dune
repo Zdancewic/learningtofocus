@@ -2,3 +2,7 @@
  (name main)
  (libraries util common lib_bw)
  (promote (until-clean)))
+
+(env
+ (dev
+  (flags (:standard -warn-error -A))))
