@@ -23,17 +23,20 @@ module type S = sig
   val pr_n_match  : (npat -> proof) -> proof (* co-pattern matching i.e. lambda or matching on the current stack *)
   val pr_p_rfoc   : value -> proof
   val pr_n_lfoc   : Top.tag Proof_rep.var -> stack -> proof
+  val pr_ex_falso : proof
+  val pr_bvar     : int -> proof
 
   val pr_value : proof list -> tm list -> ppat -> value
 
   val pr_value_unit : value
-  val pr_value_bvar : int -> value
+  val pr_value_shift : proof -> value
 
   val pr_stack_app : value -> stack -> stack
   val pr_stack_proj : tag -> stack -> stack
   val pr_stack_projL : stack -> stack
   val pr_stack_projR : stack -> stack
   val pr_stack_covar : stack
+  val pr_stack_shift : proof -> stack
 
   val check       : stable_env -> pprop list -> proof -> nprop -> bool
   val check_value : stable_env -> pprop list -> value -> pprop -> bool
@@ -41,6 +44,7 @@ module type S = sig
 end
 
 module Make (G : Globals.T) (TMS : Tm.S) (PROP : Prop.S) : S = struct
+  open Util.Hashcons
   open Proof_rep.ProofRep
   open Proof_rep.ValueRep
   open Proof_rep.StackRep
@@ -71,6 +75,7 @@ module Make (G : Globals.T) (TMS : Tm.S) (PROP : Prop.S) : S = struct
   let pr_n_match body : proof = Globals.HProof.hashcons G.proof_table (Pr_n_match body)
   let pr_p_rfoc value : proof = Globals.HProof.hashcons G.proof_table (Pr_p_rfoc value)
   let pr_n_lfoc var stack : proof = Globals.HProof.hashcons G.proof_table (Pr_n_lfoc (var, stack))
+  let pr_ex_falso : proof = pr_p_match (fun _ -> failwith "absurd")
 
   let pr_value subst tms ppat = Globals.PValue.hashcons G.value_table (Pr_value (subst, tms, ppat))
 
@@ -238,6 +243,10 @@ module Make (G : Globals.T) (TMS : Tm.S) (PROP : Prop.S) : S = struct
     Option.map (open_proof tms_ren ren)
 
 
+  let fail_check s =
+    Printf.printf "%s\n" s;
+    false
+
   let rec check (stable_env : (Top.tag * nprop) list) (env : pprop list) (proof : proof)  (nprop : nprop) : bool =
     match proof.node, env, nprop.node with
     | Pr_p_match body, pprop :: env', _ ->
@@ -258,7 +267,8 @@ module Make (G : Globals.T) (TMS : Tm.S) (PROP : Prop.S) : S = struct
       check_value stable_env env value pprop
     | Pr_n_lfoc (Proof_rep.Free v, stack), _, _ ->
       check_stack stable_env env stack (List.assoc v stable_env) nprop
-    | _, _, _ -> false
+    | _, _, _ ->
+      fail_check "ill-typed expression"
 
 and check_value (stable_env : (int * nprop) list) (env : pprop list) (value : value)  (pprop : pprop) : bool =
   match value.node, pprop.node with
@@ -274,8 +284,13 @@ and check_value (stable_env : (int * nprop) list) (env : pprop list) (value : va
     let pprop' = PROP.open_pt tm pprop_body in
     check_value stable_env env value' pprop'
   | Pr_value (subst, _, {node = Pat_p_bvar i; _}), P_shift nprop ->
-    check stable_env env (List.nth subst i) nprop
-  | _, _ -> false
+    let subst_len = List.length subst in
+    if i < subst_len then
+      check stable_env env (List.nth subst i) nprop
+    else
+      fail_check "unbound value variable"
+  | _, _ ->
+      fail_check "ill-typed value"
 
 and check_stack (stable_env : (int * nprop) list) (env : pprop list) (stack : stack) (nprop_hole : nprop) (nprop_ret : nprop) : bool =
   match stack.node, nprop_hole.node, nprop_ret.node with
@@ -298,12 +313,11 @@ and check_stack (stable_env : (int * nprop) list) (env : pprop list) (stack : st
     check_stack stable_env env stack' nprop_hole' nprop_ret
   | Pr_stack (_, [], Some k, {node = Pat_n_covar; _}), N_shift pprop, _ ->
     check stable_env (pprop :: env) k nprop_ret
-  | _, _, _ -> false
+  | _, _, _ ->
+    fail_check "ill-typed stack"
 
   let pr_value_unit = pr_value [] [] pat_p_unit
-  let pr_value_bvar i = pr_value [] [] (pat_p_bvar i)
-
-
+  let pr_value_shift p = pr_value [p] [] (pat_p_bvar 0)
   let pr_stack_app (value : value) (stack : stack) =
     (* We need to shift the bound variables in stack, because they are now bound together with those of value *)
     let Proof_rep.Pr_value (subst1, tms1, ppat) = value.node in
@@ -321,4 +335,7 @@ and check_stack (stable_env : (int * nprop) list) (env : pprop list) (stack : st
   let pr_stack_projL stack = pr_stack_proj Proof_rep.Left stack
   let pr_stack_projR stack = pr_stack_proj Proof_rep.Right stack
   let pr_stack_covar = pr_stack [] [] None pat_n_covar
+  let pr_stack_shift k = pr_stack [] [] (Some k) pat_n_covar
+
+  let pr_bvar i : proof = pr_n_lfoc (Bound i) pr_stack_covar
 end

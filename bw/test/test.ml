@@ -74,14 +74,16 @@ let case_tt = pr_p_rfoc pr_value_unit
 
 let case_double_neg = pr_n_match (fun {node = Pat_n_app ({node = Pat_p_bvar _; _},
                                                          {node = Pat_n_app ({ node = Pat_p_bvar _; _}, _); _}); _} ->
-    pr_n_lfoc (Bound 1) (pr_stack_app (pr_value_bvar 0) pr_stack_covar))
+    pr_n_lfoc (Bound 1) (pr_stack_app (pr_value_shift (pr_bvar 0)) (pr_stack_shift pr_ex_falso)))
+let type_double_neg = n_imp (p_shift prop1) (n_not (p_shift (n_not (p_shift prop1))))
 
 let assert_checks msg proof nprop = assert_bool msg (check [] [] proof nprop)
 
 let checker_tests = "Proof checker" >::: [
     "true" >:: (fun _ -> assert_checks "true" case_tt (n_shift (p_one ())));
-    "double negation" >:: (fun _ -> assert_checks "double negation" case_double_neg
-                                        (n_imp (p_shift prop1) (n_not (p_shift (n_not (p_shift prop1))))))
+    "double negation" >:: (fun _ ->
+      Pp.verbose := true;
+      assert_checks "double negation" case_double_neg type_double_neg)
 ]
 
 
