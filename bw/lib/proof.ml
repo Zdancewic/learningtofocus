@@ -26,10 +26,14 @@ module type S = sig
 
   val pr_value : proof list -> tm list -> ppat -> value
 
+  val pr_value_unit : value
+  val pr_value_bvar : int -> value
+
+  val pr_stack_app : value -> stack -> stack
   val pr_stack_proj : tag -> stack -> stack
   val pr_stack_projL : stack -> stack
   val pr_stack_projR : stack -> stack
-
+  val pr_stack_covar : stack
 
   val check       : stable_env -> pprop list -> proof -> nprop -> bool
   val check_value : stable_env -> pprop list -> value -> pprop -> bool
@@ -49,6 +53,10 @@ module Make (G : Globals.T) (TMS : Tm.S) (PROP : Prop.S) : S = struct
   type npat = Top.tag Proof_rep.npat
   type stable_env = (int * nprop) list
 
+
+  let rec buildList f n = if n > 0 then f n :: (buildList f (n - 1)) else []
+
+
   let pat_p_unit : ppat = Globals.PPat.hashcons G.ppat_table Pat_p_unit
   let pat_p_inj tag ppat : ppat = Globals.PPat.hashcons G.ppat_table (Pat_p_inj (tag, ppat))
   let pat_p_sigpair ppat : ppat = Globals.PPat.hashcons G.ppat_table (Pat_p_sigpair ppat)
@@ -65,15 +73,10 @@ module Make (G : Globals.T) (TMS : Tm.S) (PROP : Prop.S) : S = struct
   let pr_n_lfoc var stack : proof = Globals.HProof.hashcons G.proof_table (Pr_n_lfoc (var, stack))
 
   let pr_value subst tms ppat = Globals.PValue.hashcons G.value_table (Pr_value (subst, tms, ppat))
+
+
   let pr_stack subst tms k npat = Globals.NStack.hashcons G.stack_table (Pr_stack (subst, tms, k, npat))
 
-
-  let pr_stack_proj tag (stack : stack) =
-    let Proof_rep.Pr_stack (subst, tms, k, npat) = stack.node in
-      pr_stack subst tms k (pat_n_proj tag npat)
-
-  let pr_stack_projL stack = pr_stack_proj Proof_rep.Left stack
-  let pr_stack_projR stack = pr_stack_proj Proof_rep.Right stack
 
   type ppat_rec = {
     pat : ppat;
@@ -164,9 +167,32 @@ module Make (G : Globals.T) (TMS : Tm.S) (PROP : Prop.S) : S = struct
       (1, 0) <+> count_binders_npat npat'
     | Pat_n_covar -> (0, 0)
 
+  let rec open_ppat (tms_ren : int list) (ren : ppat list) (ppat : ppat) : ppat =
+    match ppat.node with
+    | Pat_p_unit -> pat_p_unit
+    | Pat_p_inj (tag, ppat') ->
+      pat_p_inj tag (open_ppat tms_ren ren ppat')
+    | Pat_p_sigpair ppat' ->
+      let tms_ren' = List.map (fun i -> i + 1) tms_ren in
+      pat_p_sigpair (open_ppat (0::tms_ren') ren ppat')
+    | Pat_p_bvar i -> List.nth ren i
+    (* | _ -> failwith "unexpected pattern" *)
+
+  let rec open_npat (tms_ren : int list) (ren : ppat list) (npat : npat) : npat =
+    match npat.node with
+    | Pat_n_proj (tag, npat') ->
+      pat_n_proj tag (open_npat tms_ren ren npat')
+    | Pat_n_app (ppat, npat') ->
+      pat_n_app (open_ppat tms_ren ren ppat) (open_npat tms_ren ren npat')
+    | Pat_n_piapp npat' ->
+      let tms_ren' =  List.map (fun i -> i + 1) tms_ren in
+      pat_n_piapp (open_npat (0::tms_ren') ren npat')
+    | Pat_n_covar -> pat_n_covar
+
+
+
   (** Rename bound variable i to ren[i] in proof *)
   let rec open_proof (tms_ren : tm list) (ren : 'a Proof_rep.var list) (proof : proof) : proof =
-    let rec buildList f n = if n > 0 then f n :: (buildList f (n - 1)) else [] in
     match proof.node with
     | Pr_p_match body ->
        pr_p_match (fun ppat_new ->
@@ -273,4 +299,26 @@ and check_stack (stable_env : (int * nprop) list) (env : pprop list) (stack : st
   | Pr_stack (_, [], Some k, {node = Pat_n_covar; _}), N_shift pprop, _ ->
     check stable_env (pprop :: env) k nprop_ret
   | _, _, _ -> false
+
+  let pr_value_unit = pr_value [] [] pat_p_unit
+  let pr_value_bvar i = pr_value [] [] (pat_p_bvar i)
+
+
+  let pr_stack_app (value : value) (stack : stack) =
+    (* We need to shift the bound variables in stack, because they are now bound together with those of value *)
+    let Proof_rep.Pr_value (subst1, tms1, ppat) = value.node in
+    let shift_subst_amt = List.length subst1 in
+    let shift_tms_amt = List.length tms1 in
+    let Proof_rep.Pr_stack (subst2, tms2, k, npat) = stack.node in
+    let tms2_ren = buildList (fun i -> i + shift_tms_amt) (List.length tms2) in
+    let ren = buildList (fun i -> pat_p_bvar (i + shift_subst_amt)) (List.length subst2) in
+    let npat' = open_npat tms2_ren ren npat in
+      pr_stack (subst1 @ subst2) (tms1 @ tms2) k (pat_n_app ppat npat')
+  let pr_stack_proj tag (stack : stack) =
+    let Proof_rep.Pr_stack (subst, tms, k, npat) = stack.node in
+      pr_stack subst tms k (pat_n_proj tag npat)
+
+  let pr_stack_projL stack = pr_stack_proj Proof_rep.Left stack
+  let pr_stack_projR stack = pr_stack_proj Proof_rep.Right stack
+  let pr_stack_covar = pr_stack [] [] None pat_n_covar
 end
