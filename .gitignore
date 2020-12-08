@@ -3,3 +3,5 @@ _build
 *.exe
 .DS_STORE
 *.p.disable
+_esy
+esy.lock

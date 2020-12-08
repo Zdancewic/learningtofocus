@@ -1,0 +1,16 @@
+{
+  "name": "learningtofocus",
+  "dependencies": {
+    "ocaml": ">= 4.8.0"
+  },
+  "devDependencies": {
+    "@opam/dune-release": "*",
+    "@opam/merlin": "*",
+    "@opam/odoc": "*",
+    "@opam/ounit2": "*",
+    "@opam/menhir": "*",
+    "@opam/utop": "*",
+    "@opam/ocaml-lsp-server": "*",
+    "ocaml": ">= 4.8.0"
+  }
+}
