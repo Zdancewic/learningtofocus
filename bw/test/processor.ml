@@ -23,19 +23,23 @@ module Make(G : Globals.T) = struct
       failwith (Printf.sprintf "Parse error at %s."
                   (string_of_range (Lexer.lex_range buf)))
 
+
+  let heuristic state =
+      let result = (MCTS.search_rounds 10 state) in
+      -result.wins
+
+  let prove axioms goal =
+	    let (params, goals) = SYNTH.make_synthetics axioms goal in
+      PROVER.search_goals heuristic params goals
+
+
   let process_input axioms i =
     begin match i with
     | Ast.Fof(_, role, p) ->
       begin match role with
         | Ast.Conjecture ->
           let q = TRANS.prop_to_nprop [] p in
-	        let (params, goals) = SYNTH.make_synthetics (!axioms) q in
-          let heuristic state =
-            let result = (MCTS.search_rounds 10 state) in
-            -result.wins
-          in
-          let success = PROVER.search_goals heuristic params goals in
-          success
+          prove (!axioms) q
         | Ast.Axiom ->
 	        let q = TRANS.prop_to_pprop [] p in
 	        let g = !axioms in

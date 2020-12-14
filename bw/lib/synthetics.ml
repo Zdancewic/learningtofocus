@@ -141,7 +141,7 @@ module Make (G:Globals.T)(TMS:Tm.S)(PROPS:Prop.S) (RULES:Rule.S)
   and focus_right u p : (Top.TagSet.t * Top.TagSet.t * sequent list) list =
     let _ = debug ("focus_right: "^ (Pp.string_of_pprop G.lookup_sym p)) in
     match p.Hashcons.node with
-    | P_one -> []
+    | P_one -> [(Top.TagSet.empty, Top.TagSet.empty, [])]
     | P_zero -> failwith "Shouldn't focus right on zero"
     | P_or(p1, p2) ->
       let prem1 = focus_right u p1 in

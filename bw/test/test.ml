@@ -55,19 +55,33 @@ let hasSuffix suffix s =
 
 let files = List.filter (hasSuffix ".p") (Array.to_list (Sys.readdir dir))
 
-let tests =  "Tests directory" >:::
-               (List.map (fun fn -> fn >::
-                                    (fun _ -> assert_bool "Proof search failed." (PROCESS.do_file (dir ^ fn))))
-                  files)
-
-(* let _ = run_test_tt_main tests *)
-
-
 open PROCESS.PROPS
 open PROCESS.PROOFS
 open Proof_rep
 
+
 let n_not pprop = n_imp pprop (n_shift (p_zero ()))
+
+let props = [
+  ("↓1", n_shift (p_one ()));
+  ("↓1 & ↓1", n_shift (p_one ()));
+  ("not 0", n_not (p_zero ()));
+  ("not (not ⊤)", n_not (p_shift (n_not (p_shift (n_top ())))));
+]
+
+let manual = "Prover Only" >::: List.map (fun (name, nprop) ->
+    name >:: (fun _ -> assert_bool "Proof search failed." (PROCESS.prove [] nprop))) props
+
+let tests =  "Combined Parsing & Prover" >:::
+               (List.map (fun fn -> fn >::
+                                    (fun _ -> assert_bool "Proof search failed." (PROCESS.do_file (dir ^ fn))))
+                  files);;
+
+run_test_tt_main manual;;
+run_test_tt_main tests;;
+
+
+
 let prop1 = n_prop (G.gen_tag ()) []
 
 let case_tt = pr_p_rfoc pr_value_unit
