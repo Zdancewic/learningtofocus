@@ -1,3 +1,6 @@
+open Proof_rep.ProofRep
+open Proof_rep.ValueRep
+open Proof_rep.StackRep
 
 module type Strategy = sig
   type state
@@ -28,7 +31,7 @@ end
 type rule_strategy_result = { games : int; wins : int }
 
 module RuleStrategy (RULES:Rule.S)
-    (SYNTH : Synthetics.S with type rule := RULES.t and type sequent := RULES.sequent)
+    (SYNTH : Synthetics.S with type rule := proof RULES.t and type lrule := stack RULES.t and type rrule := value RULES.t and type sequent := RULES.sequent)
     (PROVER : Prover.S with type sequent := RULES.sequent and type tm_unification := RULES.tm_unification)
   : (Strategy with type result = rule_strategy_result and type state = RULES.sequent list) = struct
 
@@ -76,11 +79,11 @@ module RuleStrategy (RULES:Rule.S)
     let rule_applies rule : state option =
       begin match RULES.apply rule obligation with
         | None -> None
-        | Some (subgoals, _) ->
+        | Some {builder = _; premises = subgoals; tm_unif = _} ->
           Some subgoals
       end
     in
-    List.fold_right (fun (rule : RULES.t) states ->
+    List.fold_right (fun (rule : proof RULES.t) states ->
         match rule_applies rule with
         | None -> states
         | Some new_state -> new_state :: states) (get_rules obligation) []

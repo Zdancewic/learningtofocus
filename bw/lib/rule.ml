@@ -10,25 +10,29 @@ where C is either 'any' or q[t1...tm]
 open Format
 open Tm_rep
 open Util
+open Proof_rep
 
 module type S = sig
   (* Atomic propositions can either be: *)
   (*   - a primitive proposition instantiated at some terms, or *)
   (*   - the Top.tag identifying a synthetic formula instantiated at some terms *)
   (* Both have the same structure, making unification easier. *)
+  (* Both assumptions and goal are already synthetic *)
   type atomic_prop = Top.tag * Tm_rep.tm list
-  type assumptions = atomic_prop list
+  type assumptions = (Top.tag * atomic_prop) list
   type goal =
     | Atomic of atomic_prop
     | Any       (* arises from the left rule for false *)
 
-  type sequent = assumptions * goal
+  type sequent = { assumptions: assumptions; goal: goal; }
+  type 'pf builder = ProofRep.proof list -> 'pf
 
-  type t = {
+  type 'pf t = {
     params : Top.TagSet.t  (* binder for the free variables of this rule *)
   ; uvars : Top.TagSet.t   (* unification variables created by this rule *)
   ; premises : sequent list   (* maybe a set? *)
   ; conclusion : goal
+  ; builder : 'pf builder  (* builds a proof term given one proof for each premise *)
   }
 
   type tm_unification = (Top.tag * tm) list
@@ -43,27 +47,30 @@ module type S = sig
 
   val unify_goal : goal -> goal -> prop_unification option
 
+
+  type 'pf app_result = { builder : 'pf builder; premises : sequent list; tm_unif : tm_unification; }
+
   (** Try to use a rule to prove a given sequent. Return a list of premises that
       need to be proven, or none if the rule doesn't apply. *)
-  val apply : t -> sequent -> ((sequent list) * tm_unification) option
+  val apply : 'pf t -> sequent -> 'pf app_result option
 
   val apply_id : sequent -> bool
-  val instantiate : t -> (Tm_rep.tm list) -> t
+  val instantiate : 'pf t -> (Tm_rep.tm list) -> 'pf t
   val pp_sequent : (int -> string) -> Format.formatter -> sequent -> unit
-  val pp_rule : (int -> string) -> Format.formatter -> t -> unit
+  val pp_rule : (int -> string) -> Format.formatter -> 'pf t -> unit
   val pp_goal : (int -> string) -> Format.formatter -> goal -> unit
   val pp_atomic_prop : (int -> string) -> Format.formatter -> atomic_prop -> unit
 end
 
 module Make(G:Globals.T)(TMS:Tm.S) : S  = struct
-
+  type proof = ProofRep.proof
 
 (* Atomic propositions can either be: *)
 (*   - a primitive proposition instantiated at some terms, or *)
 (*   - the Top.tag identifying a synthetic formula instantiated at some terms *)
 (* Both have the same structure, making unification easier. *)
   type atomic_prop = Top.tag * Tm_rep.tm list
-  type assumptions = atomic_prop list
+  type assumptions = (Top.tag * atomic_prop) list
   type goal =
     | Atomic of atomic_prop
     (** Any is a singleton metavariable that indicates the RHS of a rule can be
@@ -124,20 +131,22 @@ module Make(G:Globals.T)(TMS:Tm.S) : S  = struct
         end
     end
 
-  type sequent = assumptions * goal
+  type sequent = { assumptions: assumptions; goal: goal; }
 
   type substitution = (Top.tag * Tm_rep.tm) list
+  type 'pf builder = proof list -> 'pf
 
-  type t = {
+  type 'pf t = {
     params : Top.TagSet.t  (* binder for the free variables of this rule *)
   ; uvars : Top.TagSet.t   (* unification variables created by this rule *)
   ; premises : sequent list   (* maybe a set? *)
   ; conclusion : goal
+  ; builder : 'pf builder (* builds a proof term given one proof for each premise *)
   }
 
   let apply_id (sequent : sequent) : bool =
-    let (assumptions, goal) = sequent in
-    List.exists (fun hyp ->
+    let {assumptions; goal} = sequent in
+    List.exists (fun (_, hyp) ->
         match unify_goal goal (Atomic hyp) with
         | Some _ -> true
         | None -> false) assumptions
@@ -153,8 +162,8 @@ module Make(G:Globals.T)(TMS:Tm.S) : S  = struct
       TMS.tm_fun tag (List.map (apply_unif_tm uni) args)
     | _ -> t
 
-  and apply_unif_sequent (uni : prop_unification) ((lhs, rhs) : sequent) : sequent =
-    ((List.map (apply_unif_atomic uni.terms) lhs), apply_unif_goal uni rhs)
+  and apply_unif_sequent (uni : prop_unification) ({assumptions; goal} : sequent) : sequent =
+    {assumptions = (List.map (fun (x, hyp) -> (x, (apply_unif_atomic uni.terms hyp))) assumptions); goal = apply_unif_goal uni goal}
 
   and apply_unif_atomic (uni : tm_unification) ((tag, args) : atomic_prop) : atomic_prop =
     (tag, List.map (apply_unif_tm uni) args)
@@ -169,19 +178,22 @@ module Make(G:Globals.T)(TMS:Tm.S) : S  = struct
     | Atomic atom -> Atomic (apply_unif_atomic terms atom)
 
   (** Add some given assumptions to the sequent's LHS *)
-  let weaken_sequent (assumptions : assumptions) ((lhs, rhs) : sequent) : sequent =
-    (assumptions @ lhs, rhs)
+  let weaken_sequent (assumptions : assumptions) ({ assumptions = lhs; goal} : sequent) : sequent =
+    {assumptions = assumptions @ lhs; goal}
 
-  let apply (rule : t) (obligation : sequent) : ((sequent list) * tm_unification) option =
-    let (assumptions, goal) = obligation in
-    let {premises; conclusion;params=_;uvars=_} = rule in
+  type 'pf app_result = { builder : 'pf builder; premises : sequent list; tm_unif : tm_unification; }
+
+  let apply (rule : 'pf t) (obligation : sequent) : 'pf app_result option =
+    let {assumptions; goal} = obligation in
+    let {premises; conclusion; params=_; uvars=_; builder=_} = rule in
     begin match unify_goal goal conclusion with
       | Some uni ->
         let premises_weakened : sequent list = List.map (weaken_sequent assumptions) premises in
         (* TODO make sure that concatenating the rule's premise's assumptions
                 with the goal's assumptions is the correct things to do here. *)
         let premises_unified = List.map (apply_unif_sequent uni) premises_weakened in
-        Some (premises_unified, uni.terms)
+        (* TODO apply unification to the output of the builder??? *)
+        Some {builder = rule.builder; premises = premises_unified; tm_unif = uni.terms}
       | None -> None
     end
 
@@ -189,7 +201,7 @@ module Make(G:Globals.T)(TMS:Tm.S) : S  = struct
   let msubst_tap   (m : substitution) (id, ts) : atomic_prop =
     (id, List.map (TMS.msubst_tt m) ts)
   let msubst_tassm (m : substitution) : assumptions -> assumptions =
-    List.map (msubst_tap m)
+    List.map (fun (x, hyp) -> (x, msubst_tap m hyp))
   let msubst_tg    (m : substitution) : goal -> goal = function
     | Atomic ap -> Atomic (msubst_tap m ap)
     | Any -> Any
@@ -197,13 +209,14 @@ module Make(G:Globals.T)(TMS:Tm.S) : S  = struct
 (* Modify this to take the unification context into account *)
 (* Note that the order of the parameters to a synthatic connective is determined by the *)
 (* order of the Top.tags of its free parameters *)
-let instantiate (r : t) (ts : Tm_rep.tm list) =
+let instantiate (r : 'pf t) (ts : Tm_rep.tm list) =
 	let m = List.combine (Top.TagSet.elements r.params) ts in
 	{params = Top.TagSet.empty;
 	 uvars = r.uvars;  (* Need to generate new unification 'frame' and open the premises and conlusions with  that too *)
 	                   (* perhaps this can be combined into a single msubst? *)
-	 premises = List.map (fun (assms, goal) -> (msubst_tassm m assms, msubst_tg m goal)) r.premises;
-	 conclusion = msubst_tg m r.conclusion
+	 premises = List.map (fun {assumptions; goal} -> { assumptions = msubst_tassm m assumptions; goal = msubst_tg m goal}) r.premises;
+	 conclusion = msubst_tg m r.conclusion;
+   builder = r.builder;
 	}
 
 
@@ -241,15 +254,15 @@ let pp_goal st fmt g =
   | Atomic a -> pp_atomic_prop st fmt a
   | Any -> pp_print_string fmt "Any"
 
-let pp_sequent st fmt (assms, g) =
+let pp_sequent st fmt ({assumptions; goal} : sequent) =
   let _ = pp_open_hovbox fmt 0 in
-  let _ = Pp.pp_list_aux fmt "," (pp_atomic_prop st fmt) assms in
+  let _ = Pp.pp_list_aux fmt "," (pp_atomic_prop st fmt) (List.map snd assumptions) in
   let _ = pp_print_string fmt " |- " in
-  let _ = pp_goal st fmt g in
+  let _ = pp_goal st fmt goal in
   let _ = pp_close_box fmt () in
   ()
 
-let pp_rule st fmt {params = p; uvars = u; premises = prems; conclusion = c} =
+let pp_rule st fmt {params = p; uvars = u; premises = prems; conclusion = c; builder = _ } =
   let pps = pp_print_string fmt in
   begin
     pp_print_flush fmt ();

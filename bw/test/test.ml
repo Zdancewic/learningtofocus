@@ -1,3 +1,4 @@
+open Core
 open Util
 open OUnit2
 
@@ -28,17 +29,24 @@ module G : Globals.T = struct
   let value_table = Globals.PValue.create 251
 
   type sym_t = (int,string * int) Hashtbl.t
-  let sym_table = (Hashtbl.create 251 : sym_t)
+  let sym_table = (Hashtbl.create ~size:251 (module Int) : sym_t)
 
-  let rev_table : (int, string) Hashtbl.t = Hashtbl.create 251
+  let rev_table : (int, string) Hashtbl.t = Hashtbl.create ~size:251 (module Int)
 
   let gen_sym s =
     let h = Hashtbl.hash s in
-    try let _,t = Hashtbl.find sym_table h in t
-    with Not_found -> let t = Hashcons.gentag() in Hashtbl.add sym_table h (s, t); Hashtbl.add rev_table t s; t
+    begin match Hashtbl.find sym_table h with
+    | Some (_, t) -> t
+    | None -> let t = Hashcons.gentag() in
+              ignore (Hashtbl.add sym_table ~key:h ~data:(s, t));
+              ignore (Hashtbl.add rev_table ~key:t ~data:s);
+              t
+    end
 
   let lookup_sym t =
-    try Hashtbl.find rev_table t with Not_found -> ("S" ^ string_of_int t)
+    match Hashtbl.find rev_table t with
+    | Some x -> x
+    | None -> ("S" ^ string_of_int t)
 
   let gen_tag = Hashcons.gentag   (* ensures that proposition symbols and term Top.tags can be used together in unification *)
 end
@@ -48,12 +56,8 @@ module PROCESS = Processor.Make(G)
 
 (* Unit tests *)
 let dir = "tests/"
-let hasSuffix suffix s =
-  let s_len = String.length s in
-  let suffix_len = String.length suffix in
-  String.sub s (s_len - suffix_len) suffix_len = suffix
 
-let files = List.filter (hasSuffix ".p") (Array.to_list (Sys.readdir dir))
+let files = List.filter ~f:(String.is_suffix ~suffix:".p") (Array.to_list (Sys.readdir dir))
 
 open PROCESS.PROPS
 open PROCESS.PROOFS
@@ -69,11 +73,11 @@ let props = [
   ("not (not ⊤)", n_not (p_shift (n_not (p_shift (n_top ())))));
 ]
 
-let manual = "Prover Only" >::: List.map (fun (name, nprop) ->
+let manual = "Prover Only" >::: List.map ~f:(fun (name, nprop) ->
     name >:: (fun _ -> assert_bool "Proof search failed." (PROCESS.prove [] nprop))) props
 
 let tests =  "Combined Parsing & Prover" >:::
-               (List.map (fun fn -> fn >::
+               (List.map ~f:(fun fn -> fn >::
                                     (fun _ -> assert_bool "Proof search failed." (PROCESS.do_file (dir ^ fn))))
                   files);;
 

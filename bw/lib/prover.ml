@@ -1,3 +1,8 @@
+open Proof_rep.ProofRep
+open Proof_rep.StackRep
+open Proof_rep.ValueRep
+
+
 module type S = sig
   type sequent
   type tm_unification
@@ -8,13 +13,15 @@ module type S = sig
   val search_goals : (sequent list -> int) -> Top.TagSet.t -> sequent list -> bool
 end
 module Make (G:Globals.T)(TMS:Tm.S)(PROPS:Prop.S)(RULES : Rule.S)
-    (SYNTH : Synthetics.S with type rule := RULES.t and type sequent := RULES.sequent)
+    (SYNTH : Synthetics.S with type rule := proof RULES.t and
+                               type lrule := stack RULES.t and
+                               type rrule := value RULES.t and
+                               type sequent := RULES.sequent)
     (SEARCH : Search.S with type solution := RULES.tm_unification)
   : (S with type tm_unification := RULES.tm_unification and type sequent := RULES.sequent) =
   struct
 
   type search_result = SEARCH.t
-
 
   let rec fold_right_lazy (f : 'a -> (unit -> 'acc) -> 'acc) (list : 'a list) (init : unit -> 'acc) : 'acc =
     match list with
@@ -55,11 +62,11 @@ module Make (G:Globals.T)(TMS:Tm.S)(PROPS:Prop.S)(RULES : Rule.S)
       element of rules.
   *)
   let results_exists (search : RULES.sequent list -> unit -> search_result) (obligation : RULES.sequent)
-      (heuristic : RULES.sequent list -> int) (k : unit -> unit) (rules : RULES.t list) : search_result =
+      (heuristic : RULES.sequent list -> int) (k : unit -> unit) (rules : proof RULES.t list) : search_result =
     let step rule =
       match RULES.apply rule obligation with
       | None -> None
-      | Some (subgoals, _) ->
+      | Some {builder = _; premises = subgoals; tm_unif = _} ->
         let score = heuristic subgoals in
         Some { score; state = subgoals }
     in
@@ -84,13 +91,12 @@ module Make (G:Globals.T)(TMS:Tm.S)(PROPS:Prop.S)(RULES : Rule.S)
 
         (* Right focus on atomic prop: does ID rule apply? *)
             let immediate =
-              let (assumptions, goal) = obligation in
-              List.fold_right (fun hyp res ->
-              let goal_unif = RULES.unify_goal goal (Atomic hyp) in
-              match goal_unif with
-              | None -> res
-              | Some unif -> SEARCH.cons unif.terms res)
-            assumptions (fun () -> SEARCH.empty false)
+              let ({ assumptions; goal } : RULES.sequent) = obligation in
+              List.fold_right (fun (_, hyp) res ->
+                let goal_unif = RULES.unify_goal goal (Atomic hyp) in
+                match goal_unif with
+                | None -> res
+                | Some unif -> SEARCH.cons unif.terms res) assumptions (fun () -> SEARCH.empty false)
         in
         let nonimmediate () =
           some_rule_applies (SYNTH.get_rules obligation)

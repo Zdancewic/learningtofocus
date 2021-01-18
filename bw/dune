@@ -1,6 +1,6 @@
 (executable
  (name main)
- (libraries util common lib_bw)
+ (libraries util common lib_bw core)
  (promote (until-clean)))
 
 (env

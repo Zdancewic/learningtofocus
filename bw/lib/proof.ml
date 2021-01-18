@@ -23,9 +23,16 @@ module type S = sig
   val pr_n_match  : (npat -> proof) -> proof (* co-pattern matching i.e. lambda or matching on the current stack *)
   val pr_p_rfoc   : value -> proof
   val pr_n_lfoc   : Top.tag Proof_rep.var -> stack -> proof
+
+  (** Given a proof you know to be a co-pattern match and a co-pattern, get the corresponding branch. (Partial)*)
+  val pr_n_match_exec : proof -> npat -> proof
+  val pr_p_match_exec : proof -> ppat -> proof
   val pr_ex_falso : proof
   val pr_bvar     : int -> proof
+  val pr_tt : proof
 
+
+  (** Build a value out of a pattern and bindings for its free proof/term variables. *)
   val pr_value : proof list -> tm list -> ppat -> value
 
   val pr_value_unit : value
@@ -75,7 +82,19 @@ module Make (G : Globals.T) (TMS : Tm.S) (PROP : Prop.S) : S = struct
   let pr_n_match body : proof = Globals.HProof.hashcons G.proof_table (Pr_n_match body)
   let pr_p_rfoc value : proof = Globals.HProof.hashcons G.proof_table (Pr_p_rfoc value)
   let pr_n_lfoc var stack : proof = Globals.HProof.hashcons G.proof_table (Pr_n_lfoc (var, stack))
+
+  let pr_n_match_exec (proof : proof) (npat : npat) : proof =
+    match proof.node with
+    | Pr_n_match f -> f npat
+    | _ -> failwith "expected co-pattern matching"
+  let pr_p_match_exec (proof : proof) (ppat : ppat) : proof =
+    match proof.node with
+    | Pr_p_match f -> f ppat
+    | _ -> failwith "expected pattern matching"
+
   let pr_ex_falso : proof = pr_p_match (fun _ -> failwith "absurd")
+  let pr_tt : proof = pr_n_match (fun _ -> failwith "trivial")
+
 
   let pr_value subst tms ppat = Globals.PValue.hashcons G.value_table (Pr_value (subst, tms, ppat))
 
@@ -335,7 +354,8 @@ and check_stack (stable_env : (int * nprop) list) (env : pprop list) (stack : st
   let pr_stack_projL stack = pr_stack_proj Proof_rep.Left stack
   let pr_stack_projR stack = pr_stack_proj Proof_rep.Right stack
   let pr_stack_covar = pr_stack [] [] None pat_n_covar
+  let pr_bvar i : proof = pr_n_lfoc (Bound i) pr_stack_covar
   let pr_stack_shift k = pr_stack [] [] (Some k) pat_n_covar
 
-  let pr_bvar i : proof = pr_n_lfoc (Bound i) pr_stack_covar
+
 end

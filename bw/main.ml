@@ -1,3 +1,5 @@
+open Debug
+open Core
 open Util
 open Common
 open Range
@@ -28,26 +30,34 @@ module G : Globals.T = struct
   let stack_table = Globals.NStack.create 251
 
   type sym_t = (int,string * int) Hashtbl.t
-  let sym_table = (Hashtbl.create 251 : sym_t)
+  let sym_table = (Hashtbl.create ~size:251 (module Int) : sym_t)
 
-  let rev_table : (int, string) Hashtbl.t = Hashtbl.create 251
+  let rev_table : (int, string) Hashtbl.t = Hashtbl.create ~size:251 (module Int)
 
   let gen_sym s =
     let h = Hashtbl.hash s in
-    try let _,t = Hashtbl.find sym_table h in t
-    with Not_found -> let t = Hashcons.gentag() in Hashtbl.add sym_table h (s, t); Hashtbl.add rev_table t s; t
+    begin match Hashtbl.find sym_table h with
+    | Some (_, t) -> t
+    | None -> let t = Hashcons.gentag () in
+      ignore (Hashtbl.add sym_table ~key:h ~data:(s, t));
+      ignore (Hashtbl.add rev_table ~key:t ~data:s);
+      t
+    end
 
   let lookup_sym t =
-    try Hashtbl.find rev_table t with Not_found -> ("S" ^ string_of_int t)
+    match Hashtbl.find rev_table t with
+    | Some x -> x
+    | None -> "S" ^ string_of_int t
 
   let gen_tag = Hashcons.gentag   (* ensures that proposition symbols and term Top.tags can be used together in unification *)
 end
 
 module TMS = Tm.Make(G);;
 module PROPS = Prop.Make(G)(TMS);;
+module PROOFS = Proof.Make(G)(TMS)(PROPS);;
 module TRANS = Translate.Make(G)(TMS)(PROPS);;
 module RULES = Rule.Make(G)(TMS);;
-module SYNTH = Synthetics.Make(G)(TMS)(PROPS)(RULES);;
+module SYNTH = Synthetics.Make(G)(TMS)(PROPS)(RULES)(PROOFS);;
 module SEARCH = Search.Make(RULES)
 module PROVER = Prover.Make(G)(TMS)(PROPS)(RULES)(SYNTH)(SEARCH);;
 module STRATEGY = Mcts.RuleStrategy(RULES)(SYNTH)(PROVER);;
@@ -76,27 +86,33 @@ let process_input i =
 	            Printf.printf "\n" in
 
 	        let _ = Printf.printf "Symbols:\n" in
-	        let _ = Hashtbl.iter (fun h -> fun (s,t) -> Printf.printf " S:%d = %s[%d]\n" h s t) G.sym_table in
+	        let _ = Hashtbl.iteri ~f:(fun ~key -> fun ~data:(s,t) -> Printf.printf " S:%d = %s[%d]\n" key s t) G.sym_table in
 	        let _ = Printf.printf"NProp Table:\n" in
 	        let _ = Globals.NProp.iter (fun x -> Printf.printf " S:%d = %s\n" x.Hashcons.tag (Pp.string_of_nprop G.lookup_sym x)) G.nprop_table in
 	        let _ = Printf.printf"PProp Table:\n" in
-	        let _ = Globals.PProp.iter (fun x -> Printf.printf " S:%d = %s\n" x.Hashcons.tag (Pp.string_of_pprop G.lookup_sym x)) G.pprop_table in
+	        Globals.PProp.iter (fun x -> Printf.printf " S:%d = %s\n" x.Hashcons.tag (Pp.string_of_pprop G.lookup_sym x)) G.pprop_table;
 
 	        let (params, goals) = SYNTH.make_synthetics (!ctxt) q in
-
-	        let _ = Hashtbl.iter (fun i r -> Printf.printf "RULE(S:%d)\n%s\n" i (Pp.string_of_x (RULES.pp_rule G.lookup_sym) r)) SYNTH.rules in
-	        let _ = Printf.printf "Goals:\n" in
-	        let _ = Printf.printf "%s\n" (Pp.string_of_x (fun fmt -> Pp.pp_list_aux fmt "\n" (RULES.pp_sequent G.lookup_sym fmt)) goals) in
+	        Int.Table.iteri ~f:(fun ~key:i ~data:rules ->
+            List.iter ~f:(fun r ->
+              Printf.printf "LEFT RULE(S:%d)\n%s\n" i (Pp.string_of_x (RULES.pp_rule G.lookup_sym) r))
+            rules) SYNTH.lfoc_rules;
+	        Int.Table.iteri ~f:(fun ~key:i ~data:rules ->
+            List.iter ~f:(fun r ->
+              Printf.printf "RIGHT RULE(S:%d)\n%s\n" i (Pp.string_of_x (RULES.pp_rule G.lookup_sym) r))
+            rules) SYNTH.rfoc_rules;
+	        Printf.printf "Goals:\n";
+	        Printf.printf "%s\n" (Pp.string_of_x (fun fmt -> Pp.pp_list_aux fmt "\n" (RULES.pp_sequent G.lookup_sym fmt)) goals);
           let heuristic state =
-            Debug.debug "heuristic called";
+            debug "heuristic called";
             let result = (MCTS.search_rounds 1 state) in
             -result.wins
           in
           let success = PROVER.search_goals heuristic params goals in
           if success then
-            Debug.debug "PROOF SEARCH SUCCEEDED\n"
+            debug "PROOF SEARCH SUCCEEDED\n"
           else
-            Debug.debug "PROOF SEARCH FAILED\n")
+            debug "PROOF SEARCH FAILED\n")
       | Ast.Axiom -> (
          let _ = if !Pp.verbose then Printf.printf "adding axiom: " in
 	       let q = TRANS.prop_to_pprop [] p in  (* positive proposition *)
@@ -110,19 +126,19 @@ let process_input i =
     end
 
 let process_file =
-  let _ = ctxt := [] in
-  List.iter process_input
+  ctxt := [];
+  List.iter ~f:process_input
 
 
 let do_file fn =
   let _ = Printf.printf "Processing: %s\n" fn in
-  let buffer = open_in fn in
+  let buffer = In_channel.create fn in
   let ast = ast_from_lexbuf fn (Lexing.from_channel buffer) in
   process_file ast;
-  close_in buffer
+  In_channel.close buffer
 
 let argspec = [
-  ("-debug", Arg.Set (Debug.enabled), "turn on debugging");
+  ("-debug", Arg.Set (enabled), "turn on debugging");
   (* 	("-backtrack", Arg.Set (Prover.backtrack_flag), "show backtracking"); *)
   ("-print_depth", Arg.Int Format.set_max_boxes, "set print depth, default 10");
   ("-verbose", Arg.Set Pp.verbose, "turn on more output");
