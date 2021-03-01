@@ -1,6 +1,13 @@
 open Common    
 
-module Make(G : Globals.T)(TMS:Tm.S)(PROPS:Prop.S) = struct
+module type S = sig
+  type translation
+  val tm_to_tm : (Ast.var * Top.tag) list -> Ast.tm -> Tm_rep.tm
+  val prop_to_pprop : (Ast.var * Top.tag) list -> Ast.prop -> Prop_rep.pprop
+  val prop_to_nprop : (Ast.var * Top.tag) list -> Ast.prop -> Prop_rep.nprop
+end
+
+module Make(G : Globals.T)(TMS:Tm.S)(PROPS:Prop.S) : S = struct
   open TMS
   open PROPS
   open Ast
