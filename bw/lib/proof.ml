@@ -1,56 +1,3 @@
-module type S = sig
-  open Proof_rep
-  open Proof_rep.ProofRep
-  open Proof_rep.ValueRep
-  open Proof_rep.StackRep
-  open Prop_rep
-  open Tm_rep
-  type ppat = Top.tag Proof_rep.ppat
-  type npat = Top.tag Proof_rep.npat
-  type stable_env = (int * nprop) list
-
-  val pat_p_unit : ppat
-  val pat_p_inj : tag -> ppat -> ppat
-  val pat_p_sigpair : ppat -> ppat
-  val pat_p_bvar : int -> ppat
-
-  val pat_n_proj : tag -> npat -> npat
-  val pat_n_app : ppat -> npat -> npat
-  val pat_n_piapp : npat -> npat
-  val pat_n_covar : npat
-
-  val pr_p_match  : (ppat -> proof) -> proof (* pattern match on the next variable *)
-  val pr_n_match  : (npat -> proof) -> proof (* co-pattern matching i.e. lambda or matching on the current stack *)
-  val pr_p_rfoc   : value -> proof
-  val pr_n_lfoc   : Top.tag Proof_rep.var -> stack -> proof
-
-  (** Given a proof you know to be a co-pattern match and a co-pattern, get the corresponding branch. (Partial)*)
-  val pr_n_match_exec : proof -> npat -> proof
-  val pr_p_match_exec : proof -> ppat -> proof
-  val pr_ex_falso : proof
-  val pr_bvar     : int -> proof
-  val pr_tt : proof
-
-
-  (** Build a value out of a pattern and bindings for its free proof/term variables. *)
-  val pr_value : proof list -> tm list -> ppat -> value
-
-  val pr_value_unit : value
-  val pr_value_shift : proof -> value
-
-  val pr_stack_app : value -> stack -> stack
-  val pr_stack_proj : tag -> stack -> stack
-  val pr_stack_projL : stack -> stack
-  val pr_stack_projR : stack -> stack
-  val pr_stack_covar : stack
-  val pr_stack_shift : proof -> stack
-
-  val check       : stable_env -> pprop list -> proof -> nprop -> bool
-  val check_value : stable_env -> pprop list -> value -> pprop -> bool
-  val check_stack : stable_env -> pprop list -> stack -> nprop -> nprop -> bool
-end
-
-module Make (G : Globals.T) (TMS : Tm.S) (PROP : Prop.S) : S = struct
   open Util.Hashcons
   open Proof_rep.ProofRep
   open Proof_rep.ValueRep
@@ -60,6 +7,7 @@ module Make (G : Globals.T) (TMS : Tm.S) (PROP : Prop.S) : S = struct
   open List
   module PPatRep = Proof_rep.PPatRep
   module NPatRep = Proof_rep.NPatRep
+  module G = Globals.G
   type ppat = Top.tag Proof_rep.ppat
   type npat = Top.tag Proof_rep.npat
   type stable_env = (int * nprop) list
@@ -133,7 +81,7 @@ module Make (G : Globals.T) (TMS : Tm.S) (PROP : Prop.S) : S = struct
         inl @ inr
       | P_ex prop' ->
         let t = G.gen_tag () in
-        let prop'' = PROP.open_pt (TMS.tm_param t) prop' in
+        let prop'' = Prop.open_pt (Tm.tm_fvar t) prop' in
         List.map (fun ({pat; tms; vars} : ppat_rec) ->
           {pat = pat_p_sigpair pat; tms = t :: tms; vars}) (pat_for_p prop'')
       | P_shift nprop ->
@@ -164,7 +112,7 @@ module Make (G : Globals.T) (TMS : Tm.S) (PROP : Prop.S) : S = struct
         ppats
     | N_all prop' ->
       let t = G.gen_tag () in
-      let prop'' = PROP.open_nt (TMS.tm_param t) prop' in
+      let prop'' = Prop.open_nt (Tm.tm_fvar t) prop' in
       List.map (fun {pat; tms; vars; out} -> {pat = pat_n_piapp pat; tms = t :: tms; vars; out}) (pat_for_n prop'')
     | N_shift _ ->
       [{pat = pat_n_covar; tms = []; vars = []; out = prop}]
@@ -221,14 +169,14 @@ module Make (G : Globals.T) (TMS : Tm.S) (PROP : Prop.S) : S = struct
     | Pr_p_match body ->
        pr_p_match (fun ppat_new ->
          let (tm_binders, proof_binders) = (count_binders_ppat ppat_new) in
-         let tms_ren_new = buildList (fun i -> TMS.tm_uvar i) tm_binders in
+         let tms_ren_new = buildList (fun i -> Tm.tm_bvar i) tm_binders in
          let ren_new = buildList (fun i -> Proof_rep.Bound i) proof_binders in
          let proof' = body ppat_new in
          open_proof (tms_ren_new @ tms_ren) (ren_new @ ren) proof')
     | Pr_n_match body ->
        pr_n_match (fun npat_new ->
          let (tm_binders, proof_binders) = count_binders_npat npat_new in
-         let tms_ren_new = buildList (fun i -> TMS.tm_uvar i) tm_binders in
+         let tms_ren_new = buildList (fun i -> Tm.tm_bvar i) tm_binders in
          let ren_new = buildList (fun i -> Proof_rep.Bound i) proof_binders in
          let proof' = body npat_new in
          open_proof (tms_ren_new @ tms_ren) (ren_new @ ren) proof')
@@ -245,13 +193,13 @@ module Make (G : Globals.T) (TMS : Tm.S) (PROP : Prop.S) : S = struct
   and open_value (tms_ren : tm list) (ren : 'a Proof_rep.var list) (value : value) : value =
      let Pr_value (subst, tms, ppat) = value.node in
      let subst' = open_subst tms_ren ren subst in
-     let tms' = List.map (TMS.mopen_tt tms_ren) tms in
+     let tms' = List.map (Tm.mopen_tt tms_ren) tms in
      pr_value subst' tms' ppat
 
   and open_stack (tms_ren : tm list) (ren : 'a Proof_rep.var list) (stack : stack) : stack =
     let Pr_stack (subst, tms, k, npat) = stack.node in
     let subst' = open_subst tms_ren ren subst in
-    let tms' = List.map (TMS.mopen_tt tms_ren) tms in
+    let tms' = List.map (Tm.mopen_tt tms_ren) tms in
     let k' = open_cont tms_ren ren k in
     pr_stack subst' tms' k' npat
 
@@ -271,14 +219,14 @@ module Make (G : Globals.T) (TMS : Tm.S) (PROP : Prop.S) : S = struct
     | Pr_p_match body, pprop :: env', _ ->
       List.for_all (fun ({pat; tms; vars} : ppat_rec) ->
         let stable_env' = List.map (fun npropx -> (G.gen_tag (), npropx)) vars in
-        let tm_subst = List.map TMS.tm_param tms in
+        let tm_subst = List.map Tm.tm_fvar tms in
         let subst = List.map (fun (v, _) -> Proof_rep.Free v) stable_env' in
         let body' = open_proof tm_subst subst (body pat) in
         check (stable_env @ stable_env') env' body' nprop) (pat_for_p pprop)
     | Pr_n_match body, [], _ ->
       List.for_all (fun ({pat; tms; vars; out = nprop'} : npat_rec) ->
         let stable_env' = List.map (fun npropx -> (G.gen_tag (), npropx)) vars in
-        let tm_subst = List.map TMS.tm_param tms in
+        let tm_subst = List.map Tm.tm_fvar tms in
         let subst = List.map (fun (v, _) -> Proof_rep.Free v) stable_env' in
         let body' = open_proof tm_subst subst (body pat) in
         check (stable_env @ stable_env') [] body' nprop') (pat_for_n nprop)
@@ -300,7 +248,7 @@ and check_value (stable_env : (int * nprop) list) (env : pprop list) (value : va
     end
   | Pr_value (subst, tm::tms, {node = Pat_p_sigpair ppat; _}), P_ex pprop_body ->
     let value' = pr_value subst tms ppat in
-    let pprop' = PROP.open_pt tm pprop_body in
+    let pprop' = Prop.open_pt tm pprop_body in
     check_value stable_env env value' pprop'
   | Pr_value (subst, _, {node = Pat_p_bvar i; _}), P_shift nprop ->
     let subst_len = List.length subst in
@@ -328,12 +276,36 @@ and check_stack (stable_env : (int * nprop) list) (env : pprop list) (stack : st
     check_stack stable_env env stack' nprop nprop_ret
   | Pr_stack (subst_p, tm::tms, subst_n, {node = Pat_n_piapp npat; _}), N_all nprop, _ ->
     let stack' = pr_stack subst_p tms subst_n npat in
-    let nprop_hole' = PROP.open_nt tm nprop in
+    let nprop_hole' = Prop.open_nt tm nprop in
     check_stack stable_env env stack' nprop_hole' nprop_ret
   | Pr_stack (_, [], Some k, {node = Pat_n_covar; _}), N_shift pprop, _ ->
     check stable_env (pprop :: env) k nprop_ret
   | _, _, _ ->
     fail_check "ill-typed stack"
+
+
+  (** Subsitute out term variables in a proof *)
+  let rec subst_tm_proof (tm_unif : (Top.tag * Tm_rep.tm) list) (proof : proof) : proof =
+    match proof.node with
+    | Pr_p_match cases ->
+      pr_p_match (fun ppat -> subst_tm_proof tm_unif (cases ppat))
+    | Pr_n_match cases ->
+      pr_n_match (fun npat -> subst_tm_proof tm_unif (cases npat))
+    | Pr_p_rfoc value ->
+      pr_p_rfoc (subst_tm_value tm_unif value)
+    | Pr_n_lfoc (x, stack) ->
+      pr_n_lfoc x (subst_tm_stack tm_unif stack)
+and subst_tm_value (tm_unif : (Top.tag * Tm_rep.tm) list) (value : value) : value =
+    let Pr_value (pfs, tms, ppat) = value.node in
+    let pfs' = List.map (subst_tm_proof tm_unif) pfs in
+    let tms' = List.map (Tm.msubst_tt tm_unif) tms in
+    pr_value pfs' tms' ppat
+and subst_tm_stack (tm_unif : (Top.tag * Tm_rep.tm) list) (stack : stack) : stack =
+    let Pr_stack (pfs, tms, k, npat) = stack.node in
+    let pfs' = List.map (subst_tm_proof tm_unif) pfs in
+    let tms' = List.map (Tm.msubst_tt tm_unif) tms in
+    let k' = Option.map (subst_tm_proof tm_unif) k in
+    pr_stack pfs' tms' k' npat
 
   let pr_value_unit = pr_value [] [] pat_p_unit
   let pr_value_shift p = pr_value [p] [] (pat_p_bvar 0)
@@ -355,7 +327,5 @@ and check_stack (stable_env : (int * nprop) list) (env : pprop list) (stack : st
   let pr_stack_projR stack = pr_stack_proj Proof_rep.Right stack
   let pr_stack_covar = pr_stack [] [] None pat_n_covar
   let pr_bvar i : proof = pr_n_lfoc (Bound i) pr_stack_covar
+  let pr_fvar v : proof = pr_n_lfoc (Free v) pr_stack_covar
   let pr_stack_shift k = pr_stack [] [] (Some k) pat_n_covar
-
-
-end

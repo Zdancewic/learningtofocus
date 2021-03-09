@@ -44,3 +44,50 @@ sig
   val gen_tag : unit -> Top.tag   (* creates a globally unique identifier *)
 end
 
+module G : T = struct
+  type tm_t = HTm.t
+  let tm_table = HTm.create 251    (* or, load from a file based on flags *)
+
+  type ppat_t = PPat.t
+  let ppat_table = PPat.create 251
+
+  type npat_t = NPat.t
+  let npat_table = NPat.create 251
+
+  type pprop_t = PProp.t
+  let pprop_table = PProp.create 251
+
+  type nprop_t = NProp.t
+  let nprop_table = NProp.create 251
+
+  type proof_t = HProof.t
+  let proof_table = HProof.create 251
+
+  type value_t = PValue.t
+  let value_table = PValue.create 251
+
+  type stack_t = NStack.t
+  let stack_table = NStack.create 251
+
+  type sym_t = (int,string * int) Hashtbl.t
+  let sym_table = (Hashtbl.create ~size:251 (module Int) : sym_t)
+
+  let rev_table : (int, string) Hashtbl.t = Hashtbl.create ~size:251 (module Int)
+
+  let gen_sym s =
+    let h = Hashtbl.hash s in
+    begin match Hashtbl.find sym_table h with
+    | Some (_, t) -> t
+    | None -> let t = Hashcons.gentag () in
+      ignore (Hashtbl.add sym_table ~key:h ~data:(s, t));
+      ignore (Hashtbl.add rev_table ~key:t ~data:s);
+      t
+    end
+
+  let lookup_sym t =
+    match Hashtbl.find rev_table t with
+    | Some x -> x
+    | None -> "S" ^ string_of_int t
+
+  let gen_tag = Hashcons.gentag   (* ensures that proposition symbols and term Top.tags can be used together in unification *)
+end

@@ -1,6 +1,4 @@
 open Proof_rep.ProofRep
-open Proof_rep.ValueRep
-open Proof_rep.StackRep
 
 module type Strategy = sig
   type state
@@ -30,13 +28,9 @@ end
 
 type rule_strategy_result = { games : int; wins : int }
 
-module RuleStrategy (RULES:Rule.S)
-    (SYNTH : Synthetics.S with type rule := proof RULES.t and type lrule := stack RULES.t and type rrule := value RULES.t and type sequent := RULES.sequent)
-    (PROVER : Prover.S with type sequent := RULES.sequent and type tm_unification := RULES.tm_unification)
-  : (Strategy with type result = rule_strategy_result and type state = RULES.sequent list) = struct
-
-  open RULES
-  open SYNTH
+module RuleStrategy : (Strategy with type result = rule_strategy_result and type state = Rule.sequent list) = struct
+  open Rule
+  open Synthetics
 
   type result = rule_strategy_result
   type state = sequent list
@@ -77,13 +71,13 @@ module RuleStrategy (RULES:Rule.S)
 
   let step (obligation : sequent) : state list =
     let rule_applies rule : state option =
-      begin match RULES.apply rule obligation with
+      begin match apply rule obligation with
         | None -> None
         | Some {builder = _; premises = subgoals; tm_unif = _} ->
           Some subgoals
       end
     in
-    List.fold_right (fun (rule : proof RULES.t) states ->
+    List.fold_right (fun (rule : proof Rule.t) states ->
         match rule_applies rule with
         | None -> states
         | Some new_state -> new_state :: states) (get_rules obligation) []
@@ -98,7 +92,7 @@ module RuleStrategy (RULES:Rule.S)
 
   (** TODO Run a playout from the given state *)
   let simulate (obligations : state) : result =
-    let result = PROVER.solve_sequents_limit simulation_depth List.length obligations in
+    let result = Prover.solve_sequents_limit simulation_depth List.length (fun _ _ _ -> ()) obligations in
     let wins = if result then 1 else 0 in
     { games = 1; wins }
 end

@@ -33,13 +33,13 @@ let pp_hash_consed_aux fmt lvl fn h =
      pp_close_box fmt ())
   else fn fmt lvl (h.Hashcons.node)
 
-let rec pp_tm_aux st fmt lvl =
+let rec pp_tm_aux (st : int -> string) fmt lvl =
   pp_hash_consed_aux fmt lvl (pp_tm_t_aux st)
 and pp_tm_t_aux (st : int -> string) fmt _ t =
   let pps = pp_print_string fmt in
   match t with
-  | Tm_uvar i ->  pps ("u_" ^ (string_of_int i))
-  | Tm_param x -> pps ("x_" ^ (string_of_int x))
+  | Tm_bvar x -> pps ("x_^" ^ (string_of_int x))
+  | Tm_fvar x -> pps ("x_" ^ (string_of_int x))
   | Tm_fun (f, l) ->
     pps (st f);
     if l = [] then () else begin
@@ -133,133 +133,6 @@ and pp_nprop_aux st fmt lvl n =
     | N_shift p -> pps "↓"; pp_hash_consed_aux fmt lvl (pp_pprop_aux st) p
   end;
   (if (this_level < lvl) then fprintf fmt ")" else ())
-
-
-(*
-let prec_of_pf m =
-match m with
-| Pf_flab _   -> 1000
-| Pf_blab _   -> 1000
-| Pf_pair _   -> 1000
-| Pf_fst  _   -> 900
-| Pf_snd  _   -> 900
-| Pf_abs  _   -> 50
-| Pf_app  _   -> 100
-| Pf_inl  _   -> 900
-| Pf_inr  _   -> 900
-| Pf_case _   -> 50
-| Pf_not  _   -> 50
-| Pf_contra _ -> 90
-| Pf_unit     -> 1000
-| Pf_abort _  -> 80
-| Pf_all _    -> 50
-| Pf_inst _   -> 100
-| Pf_pack _   -> 1000
-| Pf_unpack _ -> 40
-| Pf_let    _ -> 40
-
-let pp_lab fmt (h,k) =
-pp_print_string fmt (h ^ "_" ^ (string_of_int k))
-
-let rec pp_pf_aux fmt lvl m =
-let this_level = prec_of_pf m in
-let pps = pp_print_string fmt in
-let pp_binder p m s =
-let l = gensym_lab () in
-pps s; pp_lab fmt l;
-pps ":"; pp_prop_aux fmt 0 p;
-pps "."; pp_print_space fmt ();
-pp_pf_aux fmt 0 (open_mm (Pf_flab l) m)
-in
-pp_open_box fmt 0;
-  (if this_level < lvl then fprintf fmt "(" else ());
- begin
-match m with
-| Pf_flab l -> pp_lab fmt l
-| Pf_blab i -> pps "!BLAB_"; pps (string_of_int i)
-| Pf_pair (m1, m2) ->
-pps "<"; pp_pf_aux fmt 0 m1;
-pps ","; pp_print_space fmt ();
-pp_pf_aux fmt 0 m2;
-pps ">"
-| Pf_fst m1 -> pps "fst "; pp_pf_aux fmt this_level m1
-| Pf_snd m1 -> pps "snd "; pp_pf_aux fmt this_level m1
-| Pf_abs (p, m1) -> pp_binder p m1 "\\"
-| Pf_app (m1, m2) ->
-pp_pf_aux fmt this_level m1;
-pp_print_space fmt ();
-pp_pf_aux fmt 1000 m2
-| Pf_inl (p, m1) -> pps "inl["; pp_prop_aux fmt 0 p; pps "] "; pp_pf_aux fmt this_level m1
-| Pf_inr (p, m1) -> pps "inr["; pp_prop_aux fmt 0 p; pps "] "; pp_pf_aux fmt this_level m1
-| Pf_case (m1, m2, m3) ->
-let l1 = gensym_lab_hint "m" in
-let l2 = gensym_lab_hint "n" in
-pps "case ";
-pp_pf_aux fmt 0 m1;
-pps " of"; pp_force_newline fmt ();
-pps "| inl "; pp_lab fmt l1; pps " -> "; pp_pf_aux fmt 0 (open_mm (Pf_flab l1) m2);
-pp_force_newline fmt ();
-pps "| inr "; pp_lab fmt l2; pps " -> "; pp_pf_aux fmt 0 (open_mm (Pf_flab l2) m3)
-| Pf_not (p, m1) -> pp_binder p m1 "~"
-| Pf_contra (m1, p, m2) ->
-pp_pf_aux fmt this_level m1;
-pp_print_space fmt ();
-pps ".[";
-pp_prop_aux fmt 0 p;
-pps "]"; pp_print_space fmt ();
-pp_pf_aux fmt 1000 m2
-| Pf_unit -> pps "<>"
-| Pf_abort (p, m1) ->
-pps "abort[";
-pp_prop_aux fmt 0 p;
-pps "]";
-pp_print_space fmt ();
-pp_pf_aux fmt this_level m1
-| Pf_all (h, m1) ->
-let x = gensym_var_hint h in
-pps "/\\\\";
-pps x; pps ".";
-pp_print_space fmt ();
-pp_pf_aux fmt this_level m1
-| Pf_inst (m1, t) ->
-pp_pf_aux fmt this_level m1;
-pp_print_space fmt ();
-pps "["; pp_tm_aux fmt 0 t;
-pps "]";
-| Pf_pack (t, m1) ->
-pps "pack[";
-pp_tm_aux fmt 0 t;
-pps ","; pp_print_space fmt ();
-pp_pf_aux fmt 0 m1;
-pps "]"
-| Pf_unpack (h, m1, m2) ->
-let x = gensym_var_hint h in
-let l = gensym_lab_hint "lx" in
-pps "let ["; pps x; pps ", "; pp_lab fmt l; pps "] =";
-pp_print_space fmt ();
-pp_pf_aux fmt 0 m1;
-pps " in";
-pp_print_space fmt ();
-pp_pf_aux fmt 0 (open_mt (Tm_fv x) (open_mm (Pf_flab l) m2))
-| Pf_let (m1, m2) ->
-let l = gensym_lab_hint "l" in
-pps "let "; pp_lab fmt l; pps " =";
-pp_print_space fmt ();
-pp_pf_aux fmt 0 m1;
-pps " in";
-pp_print_space fmt ();
-pp_pf_aux fmt 0 (open_mm (Pf_flab l) m2)
-end;
-(if this_level < lvl then fprintf fmt ")" else ());
-pp_close_box fmt ()
-
-let pp_binding fmt (l,p) =
-pp_lab fmt l;
-pp_print_string fmt " : ";
-pp_prop_aux fmt 0 p
-
-let pp_ctxt fmt = pp_list_aux fmt "," (pp_binding fmt)
-*)
 
 let string_of_x f x =
   pp_open_hvbox str_formatter 0;
